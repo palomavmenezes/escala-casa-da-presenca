@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "GrupoLouvorApp",
+    "slug": "grupo-louvor-app",
+    "version": "1.0.0",
+    "sdkVersion": "50.0.0",
+    "packagerOpts": {
+      "hostType": "lan"
+    },
+    "platforms": ["ios", "android", "web"],
+    "entryPoint": "node_modules/expo/AppEntry.js",
+    "updates": {
+      "fallbackToCacheTimeout": 0
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#FFFFFF"
+      }
+    }
+  }
+}
