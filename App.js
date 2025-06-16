@@ -16,6 +16,7 @@ import DetalhesScreen from './screens/Musicas/DetalhesScreen';
 // Importando as telas de Escalas
 import EscalasScreen from './screens/Escalas/EscalasScreen'
 import CriarEscalasScreen from './screens/Escalas/CriarEscalasScreen';
+import EscalaDetalhesScreen from './screens/Escalas/EscalaDetalhesScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -35,6 +36,7 @@ export default function App() {
           <Stack.Screen name="Musicas" component={MusicasScreen} />
           <Stack.Screen name="AdicionarMusicas" component={AdicionarMusicasScreen} />
           <Stack.Screen name="MusicaDetalhes" component={DetalhesScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="EscalaDetalhes" component={EscalaDetalhesScreen} options={{ title: 'Detalhes da Escala' }} />
           {/* Perfil e Membros */}
           <Stack.Screen name="Perfil" component={PerfilScreen} />
           <Stack.Screen name="Membros" component={RegisterMinisterScreen} />

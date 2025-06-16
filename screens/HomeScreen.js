@@ -48,16 +48,21 @@ export default function HomeScreen({ navigation }) {
         {cultos.map((culto, index) => {
           const { dia, mes } = formatarData(culto.dataCulto);
           return (
-            <View key={index} style={styles.card}>
-              <View style={styles.dataContainer}>
-                <Text style={styles.data}>{dia}</Text>
-                <Text style={styles.mes}>{mes}</Text>
+            <TouchableOpacity
+              key={index}
+              onPress={() => navigation.navigate('EscalaDetalhes', { escala: culto })}
+            >
+              <View style={styles.card}>
+                <View style={styles.dataContainer}>
+                  <Text style={styles.data}>{dia}</Text>
+                  <Text style={styles.mes}>{mes}</Text>
+                </View>
+                <View style={{ marginLeft: 10 }}>
+                  <Text style={styles.label}>Ministro responsável:</Text>
+                  <Text style={styles.ministro}>{culto.ministroResponsavel || 'Não informado'}</Text>
+                </View>
               </View>
-              <View style={{ marginLeft: 10 }}>
-                <Text style={styles.label}>Ministro responsável:</Text>
-                <Text style={styles.ministro}>{culto.ministroResponsavel || 'Não informado'}</Text>
-              </View>
-            </View>
+            </TouchableOpacity>
           );
         })}
 

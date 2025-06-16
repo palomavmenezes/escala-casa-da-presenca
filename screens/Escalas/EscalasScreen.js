@@ -51,7 +51,11 @@ export default function EscalasScreen() {
       <FlatList
         data={escalas}
         keyExtractor={item => item.id}
-        renderItem={({ item }) => <EscalaCard escala={item} />}
+        renderItem={({ item }) => (
+          <TouchableOpacity onPress={() => navigation.navigate('DetalhesEscala', { escala: item })}>
+            <EscalaCard escala={item} />
+          </TouchableOpacity>
+        )}
         contentContainerStyle={styles.listContent}
         ListEmptyComponent={
           <Text style={styles.emptyText}>Nenhuma escala futura cadastrada.</Text>
