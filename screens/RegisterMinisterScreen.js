@@ -1,38 +1,56 @@
 import React, { useState } from 'react';
-import { View, TextInput, Button, Text, Picker, StyleSheet, Alert, ScrollView } from 'react-native';
-import { auth, db } from '../services/firebase'; // mudou firestore para db
+import {
+  View,
+  TextInput,
+  Button,
+  Text,
+  StyleSheet,
+  Alert,
+  ScrollView,
+} from 'react-native';
+import { auth, db } from '../services/firebase';
+import { Picker } from '@react-native-picker/picker';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 
 export default function RegisterMinisterScreen({ navigation }) {
-  const [nome, setNome] = useState('');
-  const [sobrenome, setSobrenome] = useState('');
-  const [area, setArea] = useState('Cantor(a)');
-  const [telefone, setTelefone] = useState('');
-  const [email, setEmail] = useState('');
-  const [senha, setSenha] = useState('');
+  const [form, setForm] = useState({
+    nome: '',
+    sobrenome: '',
+    area: 'Cantor(a)',
+    telefone: '',
+    email: '',
+    senha: '',
+  });
+
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState('');
 
   const areas = ['Cantor(a)', 'Tecladista', 'Guitarrista', 'Baixista', 'Baterista'];
 
+  const handleChange = (field, value) => {
+    setForm((prevForm) => ({ ...prevForm, [field]: value }));
+  };
+
   const cadastrar = async () => {
     setErro('');
-    if (!nome || !sobrenome || !email || !senha || !telefone) {
-      setErro('Por favor, preencha todos os campos.');
+
+    const camposObrigatorios = ['nome', 'sobrenome', 'email', 'senha', 'telefone'];
+    const camposVazios = camposObrigatorios.filter((campo) => !form[campo]);
+
+    if (camposVazios.length > 0) {
+      setErro('Por favor, preencha todos os campos obrigatórios.');
       return;
     }
+
     setLoading(true);
+
     try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email, senha);
+      const userCredential = await createUserWithEmailAndPassword(auth, form.email, form.senha);
 
       await setDoc(doc(db, 'ministros', userCredential.user.uid), {
-        nome,
-        sobrenome,
-        area,
-        telefone,
-        email,
-        criadoEm: new Date()
+        ...form,
+        criadoEm: new Date(),
       });
 
       Alert.alert('Sucesso', 'Ministro cadastrado com sucesso!');
@@ -50,23 +68,23 @@ export default function RegisterMinisterScreen({ navigation }) {
 
       <TextInput
         placeholder="Nome"
-        value={nome}
-        onChangeText={setNome}
+        value={form.nome}
+        onChangeText={(value) => handleChange('nome', value)}
         style={styles.input}
         autoCapitalize="words"
       />
       <TextInput
         placeholder="Sobrenome"
-        value={sobrenome}
-        onChangeText={setSobrenome}
+        value={form.sobrenome}
+        onChangeText={(value) => handleChange('sobrenome', value)}
         style={styles.input}
         autoCapitalize="words"
       />
 
       <Text style={styles.label}>Área</Text>
       <Picker
-        selectedValue={area}
-        onValueChange={setArea}
+        selectedValue={form.area}
+        onValueChange={(value) => handleChange('area', value)}
         style={styles.picker}
       >
         {areas.map((a) => (
@@ -76,30 +94,34 @@ export default function RegisterMinisterScreen({ navigation }) {
 
       <TextInput
         placeholder="Telefone"
-        value={telefone}
-        onChangeText={setTelefone}
+        value={form.telefone}
+        onChangeText={(value) => handleChange('telefone', value)}
         style={styles.input}
         keyboardType="phone-pad"
       />
       <TextInput
         placeholder="Email"
-        value={email}
-        onChangeText={setEmail}
+        value={form.email}
+        onChangeText={(value) => handleChange('email', value)}
         style={styles.input}
         keyboardType="email-address"
         autoCapitalize="none"
       />
       <TextInput
         placeholder="Senha"
-        value={senha}
-        onChangeText={setSenha}
+        value={form.senha}
+        onChangeText={(value) => handleChange('senha', value)}
         style={styles.input}
         secureTextEntry
       />
 
       {erro ? <Text style={styles.error}>{erro}</Text> : null}
 
-      <Button title={loading ? 'Cadastrando...' : 'Cadastrar'} onPress={cadastrar} disabled={loading} />
+      <Button
+        title={loading ? 'Cadastrando...' : 'Cadastrar'}
+        onPress={cadastrar}
+        disabled={loading}
+      />
     </ScrollView>
   );
 }
