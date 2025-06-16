@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "GrupoLouvorApp",
+    "name": "Praise Scaler App",
     "slug": "grupo-louvor-app",
     "version": "1.0.0",
     "sdkVersion": "50.0.0",
@@ -20,7 +20,6 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#FFFFFF"
       }
     }
