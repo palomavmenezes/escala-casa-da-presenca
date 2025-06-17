@@ -13,6 +13,7 @@ import { doc, getDoc, collection, getDocs } from 'firebase/firestore';
 import { WebView } from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
 import { db } from '../../services/firebase';
+import BottomTab from '../../components/BottomTab';
 
 export default function EscalaDetalhesScreen() {
     const route = useRoute();
@@ -54,7 +55,7 @@ export default function EscalaDetalhesScreen() {
     };
 
     return (
-        <ScrollView contentContainerStyle={styles.container}>
+        <><ScrollView contentContainerStyle={styles.container}>
             {/* Ministro responsável */}
             {ministroResponsavel && (
                 <View style={styles.responsavelContainer}>
@@ -140,8 +141,7 @@ export default function EscalaDetalhesScreen() {
                                 style={styles.webview}
                                 javaScriptEnabled
                                 domStorageEnabled
-                                source={{ uri: getYouTubeEmbedUrl(musica.video) }}
-                            />
+                                source={{ uri: getYouTubeEmbedUrl(musica.video) }} />
                         </View>
                     )}
 
@@ -156,7 +156,7 @@ export default function EscalaDetalhesScreen() {
                     )}
                 </View>
             ))}
-        </ScrollView>
+        </ScrollView><BottomTab /></>
     );
 }
 

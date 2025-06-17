@@ -62,6 +62,14 @@ export default function MusicasScreen() {
         />
       </View>
 
+      <TouchableOpacity
+        style={styles.addButton}
+        onPress={() => navigation.navigate('AdicionarMusicas')}
+      >
+        <Ionicons name="add-circle" size={20} color="#fff" style={{ marginRight: 6 }} />
+        <Text style={styles.addButtonText}>Adicionar Música</Text>
+      </TouchableOpacity>
+
       {loading ? (
         <ActivityIndicator size="large" color="#003D29" style={{ marginTop: 20 }} />
       ) : (
@@ -161,5 +169,19 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#000',
     marginTop: 2,
+  },
+  addButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#6ACF9E',
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  addButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 16,
   },
 });

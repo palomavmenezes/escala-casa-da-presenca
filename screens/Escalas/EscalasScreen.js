@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { db } from '../../services/firebase';
-import { collection, getDocs, query, where, Timestamp } from 'firebase/firestore';
+import { collection, getDocs } from 'firebase/firestore';
 import EscalaCard from '../../components/Escalas/EscalaCard';
 import BottomTab from '../../components/BottomTab';
 
@@ -12,30 +12,33 @@ export default function EscalasScreen() {
 
   useEffect(() => {
     const fetchEscalas = async () => {
-      const hoje = Timestamp.fromDate(new Date());
+      try {
+        const snapshot = await getDocs(collection(db, 'escalas'));
+        const hoje = new Date();
 
-      const q = query(
-        collection(db, 'escalas'),
-        where('dataCulto', '>=', hoje)
-      );
+        const escalasData = snapshot.docs
+          .map(doc => {
+            const data = doc.data();
+            return {
+              id: doc.id,
+              ...data,
+              dataCulto: new Date(data.dataCulto),
+            };
+          })
+          .filter(e => !isNaN(e.dataCulto) && e.dataCulto >= hoje)
+          .sort((a, b) => a.dataCulto - b.dataCulto);
 
-      const querySnapshot = await getDocs(q);
-      const escalasData = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-
-      // Ordenar por dataCulto
-      escalasData.sort((a, b) => a.dataCulto.toDate() - b.dataCulto.toDate());
-
-      setEscalas(escalasData);
+        setEscalas(escalasData);
+      } catch (error) {
+        console.error('Erro ao buscar escalas:', error);
+      }
     };
 
     fetchEscalas();
   }, []);
 
   return (
-    <View style={styles.container}>
+    <><View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Escalas</Text>
         <TouchableOpacity
@@ -57,12 +60,8 @@ export default function EscalasScreen() {
           </TouchableOpacity>
         )}
         contentContainerStyle={styles.listContent}
-        ListEmptyComponent={
-          <Text style={styles.emptyText}>Nenhuma escala futura cadastrada.</Text>
-        }
-      />
-      <BottomTab />
-    </View>
+        ListEmptyComponent={<Text style={styles.emptyText}>Nenhuma escala futura cadastrada.</Text>} />
+    </View><BottomTab /></>
   );
 }
 

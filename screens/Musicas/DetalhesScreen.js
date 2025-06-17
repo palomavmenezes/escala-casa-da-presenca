@@ -5,6 +5,7 @@ import {
 import { WebView } from 'react-native-webview';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import BottomTab from '../../components/BottomTab';
 
 export default function DetalhesScreen() {
   const route = useRoute();
@@ -12,8 +13,11 @@ export default function DetalhesScreen() {
   const { musica } = route.params;
 
   const getYouTubeEmbedUrl = (url) => {
-    const videoId = url.split('v=')[1]?.split('&')[0];
-    return `https://www.youtube.com/embed/${videoId}`;
+    const match = url.match(
+      /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/
+    );
+    const videoId = match ? match[1] : null;
+    return videoId ? `https://www.youtube.com/embed/${videoId}` : null;
   };
 
   const abrirCifra = () => {
@@ -23,7 +27,7 @@ export default function DetalhesScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <><View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={24} color="#000" />
@@ -40,8 +44,7 @@ export default function DetalhesScreen() {
               style={styles.webview}
               javaScriptEnabled
               domStorageEnabled
-              source={{ uri: getYouTubeEmbedUrl(musica.video) }}
-            />
+              source={{ uri: getYouTubeEmbedUrl(musica.video) }} />
           </View>
         ) : (
           <Text style={styles.semVideo}>Sem vídeo disponível</Text>
@@ -54,7 +57,7 @@ export default function DetalhesScreen() {
           </TouchableOpacity>
         )}
       </ScrollView>
-    </View>
+    </View><BottomTab /></>
   );
 }
 
