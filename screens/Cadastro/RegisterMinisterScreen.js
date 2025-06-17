@@ -14,7 +14,7 @@ import {
   Platform,
 } from 'react-native';
 import { AntDesign, Feather, MaterialIcons } from '@expo/vector-icons';
-import { auth, db } from '../services/firebase';
+import { auth, db } from '../../services/firebase';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 

@@ -5,18 +5,18 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Switch,
   Alert,
   Modal,
   FlatList,
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator
 } from 'react-native';
 import { AntDesign, Feather, MaterialIcons } from '@expo/vector-icons';
-import { auth, db } from '../services/firebase';
+import { auth, db } from '../../services/firebase';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, getDocs, query, collection, where } from 'firebase/firestore';
 
 export default function Cadastro({ navigation }) {
   const [nome, setNome] = useState('');
@@ -26,12 +26,15 @@ export default function Cadastro({ navigation }) {
   const [telefone, setTelefone] = useState('');
   const [senha, setSenha] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [ministro, setministro] = useState(false);
   const [erro, setErro] = useState('');
   const [sucesso, setSucesso] = useState('');
   const [isAreaPickerVisible, setIsAreaPickerVisible] = useState(false);
+  const [isRegistering, setIsRegistering] = useState(false);
+
+  const [nomeIgreja, setNomeIgreja] = useState('');
 
   const sobrenomeInputRef = useRef(null);
+  const nomeIgrejaInputRef = useRef(null);
   const emailInputRef = useRef(null);
   const telefoneInputRef = useRef(null);
   const senhaInputRef = useRef(null);
@@ -41,49 +44,90 @@ export default function Cadastro({ navigation }) {
   const selectMusicianArea = (area) => {
     setMusicoArea(area);
     setIsAreaPickerVisible(false);
-    emailInputRef.current?.focus();
+    nomeIgrejaInputRef.current?.focus();
   };
 
   const cadastrar = async () => {
     setErro('');
     setSucesso('');
+    setIsRegistering(true);
 
-    if (!nome || !sobrenome || !email || !senha || !musicoArea || !telefone) {
-      setErro('Por favor, preencha todos os campos obrigatórios e selecione a área do músico.');
+    if (!nome || !sobrenome || !email || !senha || !musicoArea || !telefone || !nomeIgreja) {
+      setErro('Por favor, preencha todos os campos obrigatórios (incluindo o nome da igreja).');
+      setIsRegistering(false);
       return;
     }
 
     if (senha.length < 6) {
       setErro('A senha deve ter pelo menos 6 caracteres.');
+      setIsRegistering(false);
       return;
     }
 
     try {
+      const lideresRef = collection(db, 'lideres');
+
+      // 1. Verificar se já existe um líder com este e-mail PENDENTE de aprovação
+      const qExistente = query(lideresRef, where('email', '==', email), where('aprovado', '==', false));
+      const querySnapshotExistente = await getDocs(qExistente);
+
+      if (!querySnapshotExistente.empty) {
+        // Encontrou um cadastro pendente com o mesmo e-mail
+        const userIdExistente = querySnapshotExistente.docs[0].id;
+        Alert.alert(
+          'Cadastro Pendente!',
+          'Já existe um cadastro para este e-mail aguardando a finalização do pagamento. Você será redirecionado para a página de informações de pagamento.',
+          [
+            {
+              text: 'OK',
+              onPress: () => navigation.replace('Pagamento', { userId: userIdExistente })
+            },
+          ],
+          { cancelable: false }
+        );
+        setIsRegistering(false);
+        return; // Sai da função para não prosseguir com novo cadastro
+      }
+
+      // 2. Verificar se já existe um líder cadastrado para esta igreja
+      const qIgrejaExistente = query(lideresRef, where('nomeIgreja', '==', nomeIgreja));
+      const querySnapshotIgrejaExistente = await getDocs(qIgrejaExistente);
+
+      if (!querySnapshotIgrejaExistente.empty) {
+        setErro('Já existe um líder cadastrado para esta igreja. Por favor, entre em contato com o suporte ou use outra igreja.');
+        setIsRegistering(false);
+        return;
+      }
+
+      // 3. Se não há cadastro pendente e o nome da igreja é único, cria um novo usuário
       const userCredential = await createUserWithEmailAndPassword(auth, email, senha);
       const user = userCredential.user;
       console.log('Usuário criado no Authentication:', user.uid);
 
-      await setDoc(doc(db, 'ministros', user.uid), {
+      await setDoc(doc(db, 'lideres', user.uid), {
         nome: nome,
         sobrenome: sobrenome,
         email: email,
         telefone: telefone,
         area: musicoArea,
-        ministro: ministro,
-        aprovado: false,
-        createdAt: new Date(),
+        nomeIgreja: nomeIgreja,
+        isLider: true,
+        aprovado: false, // Inicia como falso
+        modoProAtivo: false, // Inicia como falso
+        cadastradoEm: new Date(),
       });
 
-      console.log('Informações do ministro salvas no Firestore para UID:', user.uid);
-      setSucesso('Cadastro realizado com sucesso! Aguarde a aprovação do líder.');
+      console.log('Documento de líder criado no Firestore para:', user.uid);
+
+      setSucesso('Cadastro realizado com sucesso! Agora finalize o pagamento para ativar sua conta.');
 
       Alert.alert(
-        'Cadastro Enviado!',
-        'Seu cadastro foi enviado com sucesso e está aguardando aprovação do líder.',
+        'Cadastro Concluído!',
+        'Para ativar sua conta de líder e ter acesso total, por favor, realize o pagamento da assinatura. Você será redirecionado para os detalhes de pagamento.',
         [
           {
             text: 'OK',
-            onPress: () => navigation.navigate('Login'),
+            onPress: () => navigation.replace('Pagamento', { userId: user.uid })
           },
         ],
         { cancelable: false }
@@ -92,7 +136,11 @@ export default function Cadastro({ navigation }) {
     } catch (error) {
       console.error('Erro ao cadastrar:', error.code, error.message);
       if (error.code === 'auth/email-already-in-use') {
-        setErro('Este e-mail já está em uso. Por favor, use outro.');
+        // Se o e-mail já está em uso NO FIREBASE AUTH (não no Firestore)
+        // Isso significa que a conta Auth existe, mas pode não ter um doc no Firestore
+        // ou o doc já está aprovado.
+        // Você pode tentar fazer login para verificar o status ou apenas informar.
+        setErro('Este e-mail já está em uso. Por favor, tente fazer login ou use outro e-mail.');
       } else if (error.code === 'auth/invalid-email') {
         setErro('O endereço de e-mail é inválido.');
       } else if (error.code === 'auth/weak-password') {
@@ -100,6 +148,8 @@ export default function Cadastro({ navigation }) {
       } else {
         setErro(`Erro ao cadastrar: ${error.message}`);
       }
+    } finally {
+      setIsRegistering(false);
     }
   };
 
@@ -138,18 +188,31 @@ export default function Cadastro({ navigation }) {
             style={styles.input}
             autoCapitalize="words"
             returnKeyType="next"
-            // No Picker/Modal customizado, a navegação de foco é manual após a seleção
           />
         </View>
 
-        {/* Musician Area Selection - Using TouchableOpacity to open the Modal */}
         <TouchableOpacity onPress={() => setIsAreaPickerVisible(true)} style={styles.inputContainer}>
           <MaterialIcons name="audiotrack" size={20} color="#888" style={styles.icon} />
           <Text style={[styles.selectDisplayText, musicoArea ? { color: '#333' } : { color: '#888' }]}>
-            {musicoArea || "Selecione a área do músico"}
+            {musicoArea || "Selecione sua área principal (ex: Tecladista)"}
           </Text>
           <AntDesign name="down" size={16} color="#888" style={styles.dropdownIcon} />
         </TouchableOpacity>
+
+        <View style={styles.inputContainer}>
+          <MaterialIcons name="church" size={20} color="#888" style={styles.icon} />
+          <TextInput
+            ref={nomeIgrejaInputRef}
+            placeholder="Nome da sua Igreja"
+            value={nomeIgreja}
+            onChangeText={setNomeIgreja}
+            style={styles.input}
+            autoCapitalize="words"
+            returnKeyType="next"
+            onSubmitEditing={() => emailInputRef.current?.focus()}
+            blurOnSubmit={false}
+          />
+        </View>
 
         <View style={styles.inputContainer}>
           <Feather name="mail" size={20} color="#888" style={styles.icon} />
@@ -199,35 +262,35 @@ export default function Cadastro({ navigation }) {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.switchContainer}>
-          <Text style={styles.switchText}>Ministro será responsável por cultos?</Text>
-          <Switch
-            onValueChange={setministro}
-            value={ministro}
-            trackColor={{ false: '#767577', true: '#86f0a6' }}
-            thumbColor={ministro ? '#33b85b' : '#f4f3f4'}
-            ios_backgroundColor="#3e3e3e"
-          />
+        <View style={styles.infoContainer}>
+          <Text style={styles.infoText}>
+            Ao se cadastrar, você estará se registrando como **Líder do Grupo de Louvor**. Para ativar sua conta e ter acesso completo ao aplicativo, será necessário realizar o pagamento de **R$9,99/mês** via Pix ou transferência.
+          </Text>
         </View>
 
-        {/* Error and Success Messages container */}
         <View style={styles.messageContainer}>
           {erro ? <Text style={styles.errorMessage}>{erro}</Text> : null}
           {sucesso ? <Text style={styles.successMessage}>{sucesso}</Text> : null}
         </View>
 
-        <TouchableOpacity style={styles.button} onPress={cadastrar}>
-          <Text style={styles.buttonText}>CADASTRAR</Text>
-          <AntDesign name="arrowright" size={20} color="white" style={styles.buttonIcon} />
+        <TouchableOpacity style={styles.button} onPress={cadastrar} disabled={isRegistering}>
+          {isRegistering ? (
+            <ActivityIndicator color="white" size="small" />
+          ) : (
+            <>
+              <Text style={styles.buttonText}>CADASTRAR E CONTINUAR</Text>
+              <AntDesign name="arrowright" size={20} color="white" style={styles.buttonIcon} />
+            </>
+          )}
         </TouchableOpacity>
 
         <View style={styles.footer}>
-          <Text style={styles.footerText}>Não tem uma conta?</Text>
-          <Text style={styles.footerSubText}>Fale com o líder do louvor da sua igreja.</Text>
+          <Text style={styles.footerAttention}>Atenção:</Text>
+          <Text style={styles.footerText}>Apenas líderes de grupos de louvor podem se cadastrar por aqui.</Text>
+          <Text style={styles.footerText}>Ministros devem ser convidados e aprovados pelo seu líder.</Text>
         </View>
       </ScrollView>
 
-      {/* Musician Area Selection Modal - KEPT as requested */}
       <Modal
         animationType="fade"
         transparent={true}
@@ -240,7 +303,7 @@ export default function Cadastro({ navigation }) {
           onPressOut={() => setIsAreaPickerVisible(false)}
         >
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Selecione a Área do Músico</Text>
+            <Text style={styles.modalTitle}>Selecione sua Área</Text>
             <FlatList
               data={musicianAreas}
               keyExtractor={(item) => item}
@@ -275,20 +338,8 @@ const styles = StyleSheet.create({
   scrollViewContent: {
     flexGrow: 1,
     paddingHorizontal: 20,
-    paddingTop: 30, 
+    paddingTop: 30,
     paddingBottom: 20,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 30,
-  },
-  backButton: {
-    paddingRight: 15,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
   },
   inputContainer: {
     flexDirection: 'row',
@@ -312,7 +363,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#333',
   },
-  selectDisplayText: { 
+  selectDisplayText: {
     flex: 1,
     fontSize: 16,
     paddingVertical: Platform.OS === 'ios' ? 17 : 0,
@@ -323,14 +374,15 @@ const styles = StyleSheet.create({
   eyeIcon: {
     paddingLeft: 10,
   },
-  switchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  infoContainer: {
+    marginBottom: 15,
+    paddingHorizontal: 10,
   },
-  switchText: {
-    fontSize: 16,
-    color: '#333',
+  infoText: {
+    fontSize: 14,
+    color: '#555',
+    textAlign: 'center',
+    fontWeight: '500',
   },
   messageContainer: {
     marginBottom: 15,
@@ -374,16 +426,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 20,
   },
-  footerText: {
+  footerAttention: {
     fontSize: 14,
     color: '#666',
     marginBottom: 5,
+    fontWeight: 'bold',
   },
-  footerSubText: {
+  footerText: {
     fontSize: 14,
     color: '#333',
-    fontWeight: 'bold',
     textAlign: 'center',
+    marginBottom: 3,
   },
   // Modal
   modalOverlay: {

@@ -4,20 +4,27 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context'; // <-- IMPORTANTE
 
+// Importando Cadastros
+import RegisterScreen from './screens/Cadastro/RegisterScreen';
+import RegisterMinisterScreen from './screens/Cadastro/RegisterMinisterScreen';
+
+// Importando telas de login e home
 import LoginScreen from './screens/LoginScreen';
-import RegisterScreen from './screens/RegisterScreen';
 import HomeScreen from './screens/HomeScreen';
 import PerfilScreen from './screens/PerfilScreen';
-import RegisterMinisterScreen from './screens/RegisterMinisterScreen';
+
 // Importando a tela de Adicionar Músicas
 import AdicionarMusicasScreen from './screens/Musicas/AdicionarMusicasScreen';
 import MusicasScreen from './screens/Musicas/MusicasScreen';
 import DetalhesScreen from './screens/Musicas/DetalhesScreen';
+
 // Importando as telas de Escalas
 import EscalasScreen from './screens/Escalas/EscalasScreen'
 import CriarEscalasScreen from './screens/Escalas/CriarEscalasScreen';
 import EscalaDetalhesScreen from './screens/Escalas/EscalaDetalhesScreen';
 
+// Importando a tela de Pagamento
+import PagamentoScreen from './screens/Pagamentos/PagamentoScreen'; 
 const Stack = createNativeStackNavigator();
 
 export default function App() {
@@ -28,6 +35,8 @@ export default function App() {
           {/* Antes do login */}
           <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
           <Stack.Screen name="Register" component={RegisterScreen} options={{ title: 'Cadastro' }} />
+          <Stack.Screen name="RegisterMinister" component={RegisterMinisterScreen} options={{ title: 'Cadastro de Ministro' }} />
+          <Stack.Screen name="Pagamento" component={PagamentoScreen} options={{ title: 'Detalhes de Pagamento' }} />
 
           {/* Após login */}
           <Stack.Screen name="Home" component={HomeScreen} options={{ title: 'Bem-vindo' }} />
@@ -40,6 +49,8 @@ export default function App() {
           {/* Perfil e Membros */}
           <Stack.Screen name="Perfil" component={PerfilScreen} />
           <Stack.Screen name="Membros" component={RegisterMinisterScreen} />
+
+
         </Stack.Navigator>
       </NavigationContainer>
     </SafeAreaProvider>
