@@ -17,7 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { db } from '../../services/firebase'; // Ensure 'auth' is not imported if not used
 import BottomTab from '../../components/BottomTab';
 
-export default function EscalaDetalhesScreen() {
+export default function EscalaDetalhes() {
   const route = useRoute();
   const navigation = useNavigation();
   const { escala } = route.params; // escala object should now contain igrejaId

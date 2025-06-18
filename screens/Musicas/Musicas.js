@@ -9,7 +9,7 @@ import { db, auth } from '../../services/firebase'; // Imported auth
 import { Ionicons } from '@expo/vector-icons';
 import BottomTab from '../../components/BottomTab';
 
-export default function MusicasScreen() {
+export default function Musicas() {
   const navigation = useNavigation();
   const [musicas, setMusicas] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -137,7 +137,7 @@ export default function MusicasScreen() {
 
       <TouchableOpacity
         style={styles.addButton}
-        onPress={() => navigation.navigate('AdicionarMusicas', { igrejaId: userChurchId })} // Pass userChurchId to AdicionarMusicas
+        onPress={() => navigation.navigate('AdicionarMusica', { igrejaId: userChurchId })} // Pass userChurchId to AdicionarMusica
       >
         <Ionicons name="add-circle" size={20} color="#fff" style={{ marginRight: 6 }} />
         <Text style={styles.addButtonText}>Adicionar Música</Text>

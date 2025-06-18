@@ -14,7 +14,7 @@ import { collection, getDocs, doc, getDoc, query, where } from 'firebase/firesto
 import EscalaCard from '../../components/Escalas/EscalaCard';
 import BottomTab from '../../components/BottomTab';
 
-export default function EscalasScreen() {
+export default function Escalas() {
   const navigation = useNavigation();
   const [escalas, setEscalas] = useState([]);
   const [loading, setLoading] = useState(true); // New state for loading

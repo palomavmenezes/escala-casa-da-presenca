@@ -29,7 +29,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import BottomTab from '../../components/BottomTab';
 import { useRoute } from '@react-navigation/native'; // Importado para obter parâmetros de rota
 
-export default function EditarEscalasScreen({ navigation }) {
+export default function EditarEscalas({ navigation }) {
   const route = useRoute();
   const { escala } = route.params; // Obtém o objeto da escala a ser editada
 
@@ -137,7 +137,7 @@ export default function EditarEscalasScreen({ navigation }) {
     }
   }, [musicaSearchQuery, musicasDisponiveis]);
 
-  // --- Funções para Seleção de Data e Hora (Mantidas do CriarEscalasScreen) ---
+  // --- Funções para Seleção de Data e Hora (Mantidas do CriarEscalas) ---
   const onChangeCultoDate = (event, selectedDate) => {
     const currentDate = selectedDate || new Date();
     setShowDatePickerCulto(false);
@@ -199,7 +199,7 @@ export default function EditarEscalasScreen({ navigation }) {
   };
 
   // --- Funções para Músicas (Mantidas) ---
-  const handleAdicionarMusica = (musicaId) => {
+  const handleAdicionarMusicas = (musicaId) => {
     const musicaJaAdicionada = musicasSelecionadas.some(m => m.musicaId === musicaId);
     if (musicaJaAdicionada) {
       Alert.alert('Atenção', 'Esta música já foi adicionada à escala.');
@@ -688,7 +688,7 @@ export default function EditarEscalasScreen({ navigation }) {
                   filteredMusicas.map(musica => (
                     <TouchableOpacity
                       key={musica.id}
-                      onPress={() => handleAdicionarMusica(musica.id)}
+                      onPress={() => handleAdicionarMusicas(musica.id)}
                       style={[
                         styles.modalItem,
                         musicasSelecionadas.some(m => m.musicaId === musica.id) && styles.modalItemSelected,

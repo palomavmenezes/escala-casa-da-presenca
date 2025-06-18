@@ -19,7 +19,7 @@ import { collection, addDoc, getDocs, doc, getDoc, query, where } from 'firebase
 import DateTimePicker from '@react-native-community/datetimepicker';
 import BottomTab from '../../components/BottomTab';
 
-export default function CriarEscalasScreen({ navigation }) {
+export default function CriarEscalas({ navigation }) {
   const [dataCulto, setDataCulto] = useState('');
   const [marcarEnsaio, setMarcarEnsaio] = useState(false);
   const [dataEnsaio, setDataEnsaio] = useState('');
@@ -207,7 +207,7 @@ export default function CriarEscalasScreen({ navigation }) {
   };
 
   // --- Funções para Músicas ---
-  const handleAdicionarMusica = (musicaId) => {
+  const handleAdicionarMusicas = (musicaId) => {
     const musicaJaAdicionada = musicasSelecionadas.some(m => m.musicaId === musicaId);
     if (musicaJaAdicionada) {
       Alert.alert('Atenção', 'Esta música já foi adicionada à escala.');
@@ -685,7 +685,7 @@ export default function CriarEscalasScreen({ navigation }) {
                   filteredMusicas.map(musica => (
                     <TouchableOpacity
                       key={musica.id}
-                      onPress={() => handleAdicionarMusica(musica.id)}
+                      onPress={() => handleAdicionarMusicas(musica.id)}
                       style={[
                         styles.modalItem,
                         musicasSelecionadas.some(m => m.musicaId === musica.id) && styles.modalItemSelected,

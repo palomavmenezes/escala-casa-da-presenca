@@ -28,7 +28,7 @@ import {
 import BottomTab from '../../components/BottomTab';
 import { Ionicons } from '@expo/vector-icons'; // Import Ionicons for icons on buttons
 
-export default function EditarMusicaScreen() {
+export default function EditarMusica() {
   const navigation = useNavigation();
   const route = useRoute();
   const { musica } = route.params; // Get the music object to be edited

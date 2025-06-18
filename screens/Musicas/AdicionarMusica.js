@@ -18,7 +18,7 @@ import { db, auth } from '../../services/firebase';
 import { collection, addDoc, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
 import BottomTab from '../../components/BottomTab';
 
-export default function AdicionarMusicasScreen() {
+export default function AdicionarMusica() {
   const navigation = useNavigation();
   const route = useRoute();
 

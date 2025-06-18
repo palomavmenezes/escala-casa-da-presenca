@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text } from 'react-native';
 import { auth } from '../services/firebase';
 
-export default function PerfilScreen() {
+export default function Perfil() {
   const user = auth.currentUser;
 
   return (

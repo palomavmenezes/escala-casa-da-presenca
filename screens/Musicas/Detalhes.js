@@ -9,7 +9,7 @@ import BottomTab from '../../components/BottomTab';
 import { db, auth } from '../../services/firebase'; // Import auth
 import { doc, getDoc, deleteDoc } from 'firebase/firestore'; // Import doc, getDoc, deleteDoc
 
-export default function DetalhesScreen() {
+export default function Detalhes() {
   const route = useRoute();
   const navigation = useNavigation();
   const { musica } = route.params;
@@ -126,7 +126,7 @@ export default function DetalhesScreen() {
               const musicaRef = doc(db, 'igrejas', userChurchId, 'musicas', musica.id);
               await deleteDoc(musicaRef);
               Alert.alert('Sucesso', 'Música deletada com sucesso!');
-              navigation.goBack?.(); // Go back to the previous screen (MusicasScreen)
+              navigation.goBack?.(); // Go back to the previous screen (Musicas)
             } catch (e) {
               console.error('Erro ao deletar música:', e);
               Alert.alert('Erro', `Não foi possível deletar a música. ${e.message}. Verifique suas permissões.`);

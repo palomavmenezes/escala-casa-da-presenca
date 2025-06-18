@@ -8,7 +8,7 @@ import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firesto
 import BottomTab from '../components/BottomTab';
 import EscalaCard from '../components/Escalas/EscalaCard';
 
-export default function HomeScreen() {
+export default function Home() {
   const navigation = useNavigation();
   const route = useRoute();
 
@@ -35,7 +35,7 @@ export default function HomeScreen() {
       }
 
       if (!currentIgrejaId) {
-        console.log("HomeScreen: igrejaId ausente na rota, buscando do perfil do usuário...");
+        console.log("Home: igrejaId ausente na rota, buscando do perfil do usuário...");
         try {
           let foundIgrejaId = null;
           const igrejasSnapshot = await getDocs(collection(db, 'igrejas'));
@@ -53,14 +53,14 @@ export default function HomeScreen() {
           if (foundIgrejaId) {
             currentIgrejaId = foundIgrejaId;
             setUserChurchIdState(foundIgrejaId);
-            console.log("HomeScreen: igrejaId encontrado no perfil do usuário:", currentIgrejaId);
+            console.log("Home: igrejaId encontrado no perfil do usuário:", currentIgrejaId);
           } else {
             setErrorCultos('Não foi possível encontrar a igreja associada ao seu usuário. Faça login novamente.');
             setIsLoadingCultos(false);
             return;
           }
         } catch (error) {
-          console.error('HomeScreen: Erro ao buscar igrejaId do usuário:', error);
+          console.error('Home: Erro ao buscar igrejaId do usuário:', error);
           setErrorCultos('Erro ao carregar dados da sua igreja. Tente novamente.');
           setIsLoadingCultos(false);
           return;
@@ -68,7 +68,7 @@ export default function HomeScreen() {
       }
 
       if (currentUserId && currentIgrejaId) {
-        console.log("HomeScreen: userId e igrejaId disponíveis. Buscando cultos...");
+        console.log("Home: userId e igrejaId disponíveis. Buscando cultos...");
         buscarCultos(currentUserId, currentIgrejaId);
       } else {
         setIsLoadingCultos(false);
@@ -119,7 +119,7 @@ export default function HomeScreen() {
 
       setCultos(futuros);
     } catch (error) {
-      console.error('Erro ao buscar cultos na HomeScreen:', error);
+      console.error('Erro ao buscar cultos na Home:', error);
       setErrorCultos('Erro ao carregar seus cultos. Verifique sua conexão e permissões.');
     } finally {
       setIsLoadingCultos(false);
