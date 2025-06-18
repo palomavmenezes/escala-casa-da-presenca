@@ -4,7 +4,7 @@ import { useNavigation, useRoute } from '@react-navigation/native'; // useRoute 
 import { Feather } from '@expo/vector-icons'; // Para o ícone de copiar
 import * as Clipboard from 'expo-clipboard'; // Importar Clipboard do Expo
 
-export default function PaymentInfoScreen() {
+export default function PaymentInfo() {
   const navigation = useNavigation();
   const route = useRoute();
   const { userId } = route.params;

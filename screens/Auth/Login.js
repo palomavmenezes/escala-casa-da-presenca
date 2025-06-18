@@ -20,7 +20,7 @@ import { auth, db } from '../../services/firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, getDoc, getDocs, query, collectionGroup, where } from 'firebase/firestore';
 
-export default function LoginScreen({ navigation }) {
+export default function Login({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
