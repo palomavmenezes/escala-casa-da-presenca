@@ -1,24 +1,25 @@
 import React, { useState, useRef } from 'react';
+import styles from './CadastroLider.styles';
 import {
   View,
   TextInput,
   Text,
   TouchableOpacity,
   StyleSheet,
-  Switch,
   Alert,
   Modal,
   FlatList,
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator
 } from 'react-native';
 import { AntDesign, Feather, MaterialIcons } from '@expo/vector-icons';
-import { auth, db } from '../services/firebase';
+import { auth, db } from '../../services/firebase';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, getDocs, query, collection, where, writeBatch } from 'firebase/firestore';
 
-export default function Cadastro({ navigation }) {
+export default function CadastroLider({ navigation }) {
   const [nome, setNome] = useState('');
   const [sobrenome, setSobrenome] = useState('');
   const [musicoArea, setMusicoArea] = useState('');
@@ -26,12 +27,15 @@ export default function Cadastro({ navigation }) {
   const [telefone, setTelefone] = useState('');
   const [senha, setSenha] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [ministro, setministro] = useState(false);
   const [erro, setErro] = useState('');
   const [sucesso, setSucesso] = useState('');
   const [isAreaPickerVisible, setIsAreaPickerVisible] = useState(false);
+  const [isCadastroLidering, setIsCadastroLidering] = useState(false);
+
+  const [nomeIgreja, setNomeIgreja] = useState('');
 
   const sobrenomeInputRef = useRef(null);
+  const nomeIgrejaInputRef = useRef(null);
   const emailInputRef = useRef(null);
   const telefoneInputRef = useRef(null);
   const senhaInputRef = useRef(null);
@@ -41,49 +45,107 @@ export default function Cadastro({ navigation }) {
   const selectMusicianArea = (area) => {
     setMusicoArea(area);
     setIsAreaPickerVisible(false);
-    emailInputRef.current?.focus();
+    nomeIgrejaInputRef.current?.focus();
   };
 
   const cadastrar = async () => {
     setErro('');
     setSucesso('');
+    setIsCadastroLidering(true);
 
-    if (!nome || !sobrenome || !email || !senha || !musicoArea || !telefone) {
-      setErro('Por favor, preencha todos os campos obrigatórios e selecione a área do músico.');
+    if (!nome || !sobrenome || !email || !senha || !musicoArea || !telefone || !nomeIgreja) {
+      setErro('Por favor, preencha todos os campos obrigatórios (incluindo o nome da igreja).');
+      setIsCadastroLidering(false);
       return;
     }
 
     if (senha.length < 6) {
       setErro('A senha deve ter pelo menos 6 caracteres.');
+      setIsCadastroLidering(false);
       return;
     }
 
     try {
+      const igrejasRef = collection(db, 'igrejas');
+      const qIgrejaExistente = query(igrejasRef, where('nomeIgreja', '==', nomeIgreja));
+      const querySnapshotIgrejaExistente = await getDocs(qIgrejaExistente);
+
+      if (!querySnapshotIgrejaExistente.empty) {
+        setErro('Já existe uma igreja cadastrada com este nome. Por favor, verifique o nome ou entre em contato com o suporte.');
+        setIsCadastroLidering(false);
+        return;
+      }
+
+      const usuariosRef = collection(db, 'usuarios');
+      const qEmailPendente = query(usuariosRef,
+        where('email', '==', email),
+        where('aprovado', '==', false));
+      const querySnapshotEmailPendente = await getDocs(qEmailPendente);
+
+      if (!querySnapshotEmailPendente.empty) {
+        const userIdExistente = querySnapshotEmailPendente.docs[0].id;
+        Alert.alert(
+          'Cadastro Pendente!',
+          'Já existe um cadastro para este e-mail aguardando a finalização do pagamento. Você será redirecionado para a página de informações de pagamento.',
+          [
+            {
+              text: 'OK',
+              onPress: () => navigation.replace('Pagamento', { userId: userIdExistente, igrejaId: querySnapshotEmailPendente.docs[0].data().igrejaId })
+            },
+          ],
+          { cancelable: false }
+        );
+        setIsCadastroLidering(false);
+        return;
+      }
+
       const userCredential = await createUserWithEmailAndPassword(auth, email, senha);
       const user = userCredential.user;
-      console.log('Usuário criado no Authentication:', user.uid);
+      const liderUserId = user.uid;
 
-      await setDoc(doc(db, 'ministros', user.uid), {
+      console.log('Usuário (Líder) criado no Authentication:', liderUserId);
+
+      const batch = writeBatch(db);
+
+      const novaIgrejaDocRef = doc(collection(db, 'igrejas'));
+      const igrejaId = novaIgrejaDocRef.id;
+
+      const liderUsuarioDocRef = doc(db, 'igrejas', igrejaId, 'usuarios', liderUserId);
+
+      batch.set(novaIgrejaDocRef, {
+        nomeIgreja: nomeIgreja,
+        liderPrincipalId: liderUserId,
+        modoProAtivo: false,
+        cadastradoEm: new Date(),
+      });
+
+      batch.set(liderUsuarioDocRef, {
+        foto: '',
         nome: nome,
         sobrenome: sobrenome,
         email: email,
         telefone: telefone,
         area: musicoArea,
-        ministro: ministro,
-        aprovado: false,
-        createdAt: new Date(),
+        isMinisterForCults: true,
+        isLider: true,
+        aprovado: true,
+        igrejaId: igrejaId,
+        cadastradoEm: new Date(),
       });
 
-      console.log('Informações do ministro salvas no Firestore para UID:', user.uid);
-      setSucesso('Cadastro realizado com sucesso! Aguarde a aprovação do líder.');
+      await batch.commit();
+
+      console.log('Documento da Igreja e do Líder criados no Firestore. Igreja ID:', igrejaId);
+
+      setSucesso('Cadastro realizado com sucesso! Agora finalize o pagamento para ativar sua conta.');
 
       Alert.alert(
-        'Cadastro Enviado!',
-        'Seu cadastro foi enviado com sucesso e está aguardando aprovação do líder.',
+        'Cadastro Concluído!',
+        'Para ativar sua conta de líder e ter acesso total, por favor, realize o pagamento da assinatura. Você será redirecionado para os detalhes de pagamento.',
         [
           {
             text: 'OK',
-            onPress: () => navigation.navigate('Login'),
+            onPress: () => navigation.replace('Pagamento', { userId: liderUserId, igrejaId: igrejaId })
           },
         ],
         { cancelable: false }
@@ -92,7 +154,7 @@ export default function Cadastro({ navigation }) {
     } catch (error) {
       console.error('Erro ao cadastrar:', error.code, error.message);
       if (error.code === 'auth/email-already-in-use') {
-        setErro('Este e-mail já está em uso. Por favor, use outro.');
+        setErro('Este e-mail já está em uso. Por favor, tente fazer login ou use outro e-mail.');
       } else if (error.code === 'auth/invalid-email') {
         setErro('O endereço de e-mail é inválido.');
       } else if (error.code === 'auth/weak-password') {
@@ -100,6 +162,8 @@ export default function Cadastro({ navigation }) {
       } else {
         setErro(`Erro ao cadastrar: ${error.message}`);
       }
+    } finally {
+      setIsCadastroLidering(false);
     }
   };
 
@@ -138,18 +202,31 @@ export default function Cadastro({ navigation }) {
             style={styles.input}
             autoCapitalize="words"
             returnKeyType="next"
-            // No Picker/Modal customizado, a navegação de foco é manual após a seleção
           />
         </View>
 
-        {/* Musician Area Selection - Using TouchableOpacity to open the Modal */}
         <TouchableOpacity onPress={() => setIsAreaPickerVisible(true)} style={styles.inputContainer}>
           <MaterialIcons name="audiotrack" size={20} color="#888" style={styles.icon} />
           <Text style={[styles.selectDisplayText, musicoArea ? { color: '#333' } : { color: '#888' }]}>
-            {musicoArea || "Selecione a área do músico"}
+            {musicoArea || "Selecione sua área principal (ex: Tecladista)"}
           </Text>
           <AntDesign name="down" size={16} color="#888" style={styles.dropdownIcon} />
         </TouchableOpacity>
+
+        <View style={styles.inputContainer}>
+          <MaterialIcons name="church" size={20} color="#888" style={styles.icon} />
+          <TextInput
+            ref={nomeIgrejaInputRef}
+            placeholder="Nome da sua Igreja"
+            value={nomeIgreja}
+            onChangeText={setNomeIgreja}
+            style={styles.input}
+            autoCapitalize="words"
+            returnKeyType="next"
+            onSubmitEditing={() => emailInputRef.current?.focus()}
+            blurOnSubmit={false}
+          />
+        </View>
 
         <View style={styles.inputContainer}>
           <Feather name="mail" size={20} color="#888" style={styles.icon} />
@@ -199,35 +276,35 @@ export default function Cadastro({ navigation }) {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.switchContainer}>
-          <Text style={styles.switchText}>Ministro será responsável por cultos?</Text>
-          <Switch
-            onValueChange={setministro}
-            value={ministro}
-            trackColor={{ false: '#767577', true: '#86f0a6' }}
-            thumbColor={ministro ? '#33b85b' : '#f4f3f4'}
-            ios_backgroundColor="#3e3e3e"
-          />
+        <View style={styles.infoContainer}>
+          <Text style={styles.infoText}>
+            Ao se cadastrar, você estará se registrando como **Líder do Grupo de Louvor**. Para ativar sua conta e ter acesso completo ao aplicativo, será necessário realizar o pagamento de **R$9,99/mês** via Pix ou transferência.
+          </Text>
         </View>
 
-        {/* Error and Success Messages container */}
         <View style={styles.messageContainer}>
           {erro ? <Text style={styles.errorMessage}>{erro}</Text> : null}
           {sucesso ? <Text style={styles.successMessage}>{sucesso}</Text> : null}
         </View>
 
-        <TouchableOpacity style={styles.button} onPress={cadastrar}>
-          <Text style={styles.buttonText}>CADASTRAR</Text>
-          <AntDesign name="arrowright" size={20} color="white" style={styles.buttonIcon} />
+        <TouchableOpacity style={styles.button} onPress={cadastrar} disabled={isCadastroLidering}>
+          {isCadastroLidering ? (
+            <ActivityIndicator color="white" size="small" />
+          ) : (
+            <>
+              <Text style={styles.buttonText}>CADASTRAR E CONTINUAR</Text>
+              <AntDesign name="arrowright" size={20} color="white" style={styles.buttonIcon} />
+            </>
+          )}
         </TouchableOpacity>
 
         <View style={styles.footer}>
-          <Text style={styles.footerText}>Não tem uma conta?</Text>
-          <Text style={styles.footerSubText}>Fale com o líder do louvor da sua igreja.</Text>
+          <Text style={styles.footerAttention}>Atenção:</Text>
+          <Text style={styles.footerText}>Apenas líderes de grupos de louvor podem se cadastrar por aqui.</Text>
+          <Text style={styles.footerText}>Ministros devem ser convidados e aprovados pelo seu líder.</Text>
         </View>
       </ScrollView>
 
-      {/* Musician Area Selection Modal - KEPT as requested */}
       <Modal
         animationType="fade"
         transparent={true}
@@ -240,7 +317,7 @@ export default function Cadastro({ navigation }) {
           onPressOut={() => setIsAreaPickerVisible(false)}
         >
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Selecione a Área do Músico</Text>
+            <Text style={styles.modalTitle}>Selecione sua Área</Text>
             <FlatList
               data={musicianAreas}
               keyExtractor={(item) => item}
@@ -266,173 +343,3 @@ export default function Cadastro({ navigation }) {
     </KeyboardAvoidingView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f8f8f8',
-  },
-  scrollViewContent: {
-    flexGrow: 1,
-    paddingHorizontal: 20,
-    paddingTop: 30, 
-    paddingBottom: 20,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 30,
-  },
-  backButton: {
-    paddingRight: 15,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    marginBottom: 15,
-    paddingHorizontal: 15,
-    height: 55,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  icon: {
-    marginRight: 10,
-  },
-  input: {
-    flex: 1,
-    fontSize: 16,
-    color: '#333',
-  },
-  selectDisplayText: { 
-    flex: 1,
-    fontSize: 16,
-    paddingVertical: Platform.OS === 'ios' ? 17 : 0,
-  },
-  dropdownIcon: {
-    marginLeft: 'auto',
-  },
-  eyeIcon: {
-    paddingLeft: 10,
-  },
-  switchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  switchText: {
-    fontSize: 16,
-    color: '#333',
-  },
-  messageContainer: {
-    marginBottom: 15,
-  },
-  button: {
-    flexDirection: 'row',
-    backgroundColor: '#2e4a3f',
-    borderRadius: 10,
-    height: 55,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
-    elevation: 3,
-  },
-  buttonText: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginRight: 10,
-  },
-  buttonIcon: {
-    marginLeft: 5,
-  },
-  errorMessage: {
-    color: 'red',
-    textAlign: 'center',
-    marginBottom: 5,
-    fontSize: 14,
-  },
-  successMessage: {
-    color: 'green',
-    textAlign: 'center',
-    marginBottom: 5,
-    fontSize: 14,
-  },
-  footer: {
-    marginBottom: 20,
-    alignItems: 'center',
-    marginTop: 20,
-  },
-  footerText: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 5,
-  },
-  footerSubText: {
-    fontSize: 14,
-    color: '#333',
-    fontWeight: 'bold',
-    textAlign: 'center',
-  },
-  // Modal
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  },
-  modalContent: {
-    backgroundColor: 'white',
-    borderRadius: 10,
-    padding: 20,
-    width: '80%',
-    maxHeight: '70%',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 15,
-    textAlign: 'center',
-  },
-  modalOption: {
-    paddingVertical: 12,
-    paddingHorizontal: 10,
-  },
-  modalOptionText: {
-    fontSize: 16,
-    color: '#333',
-  },
-  separator: {
-    height: 1,
-    backgroundColor: '#eee',
-    marginVertical: 5,
-  },
-  modalCloseButton: {
-    marginTop: 20,
-    padding: 12,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  modalCloseButtonText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#555',
-  },
-});

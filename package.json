@@ -24,7 +24,9 @@
     "react-native-svg": "^15.12.0",
     "react-native-svg-transformer": "^1.5.1",
     "react-native-web": "~0.19.10",
-    "react-native-webview": "13.6.4"
+    "react-native-webview": "13.6.4",
+    "expo-clipboard": "~5.0.1",
+    "@react-native-community/datetimepicker": "7.7.0"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0"

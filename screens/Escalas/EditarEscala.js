@@ -11,14 +11,28 @@ import {
   Modal,
   Switch,
   Linking,
+  ActivityIndicator, // Adicionado para estado de carregamento
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { db, auth } from '../../services/firebase';
-import { collection, addDoc, getDocs } from 'firebase/firestore';
+import {
+  collection,
+  getDocs,
+  doc,
+  getDoc,
+  query,
+  where,
+  updateDoc, // Importado para atualizar documentos
+  deleteDoc, // Importado para deletar documentos
+} from 'firebase/firestore';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import BottomTab from '../../components/BottomTab';
+import { useRoute } from '@react-navigation/native'; // Importado para obter parâmetros de rota
 
-export default function CriarEscalasScreen({ navigation }) {
+export default function EditarEscalas({ navigation }) {
+  const route = useRoute();
+  const { escala } = route.params; // Obtém o objeto da escala a ser editada
+
   const [dataCulto, setDataCulto] = useState('');
   const [marcarEnsaio, setMarcarEnsaio] = useState(false);
   const [dataEnsaio, setDataEnsaio] = useState('');
@@ -27,38 +41,88 @@ export default function CriarEscalasScreen({ navigation }) {
   const [showDatePickerEnsaio, setShowDatePickerEnsaio] = useState(false);
   const [showTimePickerEnsaio, setShowTimePickerEnsaio] = useState(false);
 
-  const [ministros, setMinistros] = useState([]);
-  const [ministrosEscalados, setMinistrosEscalados] = useState([]);
+  const [ministros, setMinistros] = useState([]); // Todos os usuários/ministros da igreja
+  const [ministrosEscalados, setMinistrosEscalados] = useState([]); // IDs dos ministros selecionados para a escala
   const [modalMinistrosVisible, setModalMinistrosVisible] = useState(false);
 
-  const [musicasDisponiveis, setMusicasDisponiveis] = useState([]);
-  const [musicasSelecionadas, setMusicasSelecionadas] = useState([]);
-  const [modalMusicasVisible, setModalMusicasVisible] = useState(false); // Novo modal para busca de músicas
-  const [musicaSearchQuery, setMusicaSearchQuery] = useState(''); // Estado para o input de busca de músicas
-  const [filteredMusicas, setFilteredMusicas] = useState([]); // Músicas filtradas pela busca
-  const [currentMusicIndexForSingers, setCurrentMusicIndexForSingers] = useState(null); // Para saber qual música estamos editando os cantores
-  const [modalCantoresMusicaVisible, setModalCantoresMusicaVisible] = useState(false); // Modal para selecionar cantores da música
+  const [musicasDisponiveis, setMusicasDisponiveis] = useState([]); // Todas as músicas da igreja
+  const [musicasSelecionadas, setMusicasSelecionadas] = useState([]); // Músicas selecionadas para a escala
+  const [modalMusicasVisible, setModalMusicasVisible] = useState(false);
+  const [musicaSearchQuery, setMusicaSearchQuery] = useState('');
+  const [filteredMusicas, setFilteredMusicas] = useState([]);
+  const [currentMusicIndexForSingers, setCurrentMusicIndexForSingers] = useState(null);
+  const [modalCantoresMusicaVisible, setModalCantoresMusicaVisible] = useState(false);
 
+  const [userChurchId, setUserChurchId] = useState(null); // ID da igreja do usuário
+  const [loading, setLoading] = useState(true); // Estado de carregamento para busca de dados
+  const [telaErro, setTelaErro] = useState(''); // Estado para exibir erros
+
+  // Efeito para carregar os dados iniciais da escala e dados específicos da igreja (ministros, músicas)
   useEffect(() => {
-    const carregarDados = async () => {
+    const carregarDadosDaEscalaEComuns = async () => {
+      setLoading(true);
+      setTelaErro('');
+
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        setTelaErro('Usuário não autenticado. Faça login para editar escalas.');
+        setLoading(false);
+        navigation.navigate('Login');
+        return;
+      }
+
+      // Verifica se a escala e seus IDs essenciais estão presentes
+      if (!escala || !escala.id || !escala.igrejaId) {
+        setTelaErro('Dados da escala para edição estão incompletos ou ausentes.');
+        setLoading(false);
+        return;
+      }
+
+      // Define os estados iniciais com os dados da escala passada
+      setDataCulto(escala.dataCulto || '');
+      setMarcarEnsaio(escala.ensaio || false);
+      setDataEnsaio(escala.dataEnsaio || '');
+      setHoraEnsaio(escala.horaEnsaio || '');
+      setMinistrosEscalados(escala.usuariosEscalados || []);
+      // Mapeia as músicas existentes para o formato de estado, garantindo que 'cantores' sejam IDs
+      setMusicasSelecionadas(escala.musicas?.map(m => ({
+        musicaId: m.musicaId,
+        musicaNome: m.musicaNome,
+        cifra: m.cifra,
+        video: m.video || '',
+        tom: m.tom || '', // Inclui 'tom' se estiver disponível no documento original da música
+        cantores: m.cantores || [], // Garante que cantores são IDs
+      })) || []);
+
       try {
-        // Carregar ministros
-        const ministrosSnap = await getDocs(collection(db, 'ministros'));
+        const igrejaId = escala.igrejaId; // Usa o igrejaId da própria escala
+        setUserChurchId(igrejaId);
+
+        // Carrega todos os usuários (ministros) aprovados da igreja específica
+        const ministrosQuery = query(
+          collection(db, 'igrejas', igrejaId, 'usuarios'),
+          where('aprovado', '==', true)
+        );
+        const ministrosSnap = await getDocs(ministrosQuery);
         const listaMinistros = ministrosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         setMinistros(listaMinistros);
 
-        // Carregar músicas
-        const musicasSnap = await getDocs(collection(db, 'musicas'));
+        // Carrega todas as músicas da igreja específica
+        const musicasQuery = collection(db, 'igrejas', igrejaId, 'musicas');
+        const musicasSnap = await getDocs(musicasQuery);
         const listaMusicas = musicasSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         setMusicasDisponiveis(listaMusicas);
-        setFilteredMusicas(listaMusicas); // Inicializa as músicas filtradas
+        setFilteredMusicas(listaMusicas); // Inicializa a lista filtrada
       } catch (error) {
-        console.error('Erro ao buscar dados:', error);
-        Alert.alert('Erro', 'Não foi possível carregar os dados. Tente novamente mais tarde.');
+        console.error('Erro ao buscar dados para edição da escala:', error);
+        setTelaErro('Não foi possível carregar os dados para edição. Tente novamente.');
+      } finally {
+        setLoading(false);
       }
     };
-    carregarDados();
-  }, []);
+
+    carregarDadosDaEscalaEComuns();
+  }, [escala, navigation]); // Adiciona 'escala' e 'navigation' como dependências
 
   // Efeito para filtrar músicas quando a busca ou a lista de músicas disponíveis muda
   useEffect(() => {
@@ -73,26 +137,26 @@ export default function CriarEscalasScreen({ navigation }) {
     }
   }, [musicaSearchQuery, musicasDisponiveis]);
 
-  // --- Funções para Seleção de Data e Hora ---
+  // --- Funções para Seleção de Data e Hora (Mantidas do CriarEscalas) ---
   const onChangeCultoDate = (event, selectedDate) => {
     const currentDate = selectedDate || new Date();
     setShowDatePickerCulto(false);
-    setDataCulto(currentDate.toISOString().split('T')[0]); // Formato AAAA-MM-DD
+    setDataCulto(currentDate.toISOString().split('T')[0]);
   };
 
   const onChangeEnsaioDate = (event, selectedDate) => {
     const currentDate = selectedDate || new Date();
     setShowDatePickerEnsaio(false);
-    setDataEnsaio(currentDate.toISOString().split('T')[0]); // Formato AAAA-MM-DD
+    setDataEnsaio(currentDate.toISOString().split('T')[0]);
   };
 
   const onChangeEnsaioTime = (event, selectedTime) => {
     const currentTime = selectedTime || new Date();
     setShowTimePickerEnsaio(false);
-    setHoraEnsaio(currentTime.toTimeString().split(' ')[0].substring(0, 5)); // Formato HH:MM
+    setHoraEnsaio(currentTime.toTimeString().split(' ')[0].substring(0, 5));
   };
 
-  // --- Funções para Ministros ---
+  // --- Funções para Ministros (Mantidas) ---
   const toggleMinistroEscalado = (id) => {
     setMinistrosEscalados(prev => {
       const isCurrentlyEscalado = prev.includes(id);
@@ -116,23 +180,26 @@ export default function CriarEscalasScreen({ navigation }) {
     return ministro ? ministro.nome : 'Ministro Desconhecido';
   };
 
+  // Usando 'foto' como o campo para a URL da foto, com base na sua estrutura de dados
   const getMinistroFotoById = (id) => {
     const ministro = ministros.find(m => m.id === id);
-    return ministro ? ministro.fotoURL : null;
+    return ministro ? ministro.foto : null;
   };
 
   const getMinistroIniciaisById = (id) => {
     const ministro = ministros.find(m => m.id === id);
     if (!ministro || !ministro.nome) return '';
-    return ministro.nome
+    // Corrigido para usar nome e sobrenome, se disponíveis, para iniciais
+    const nomeCompleto = `${ministro.nome} ${ministro.sobrenome || ''}`.trim();
+    return nomeCompleto
       .split(' ')
       .slice(0, 2)
       .map(p => p[0].toUpperCase())
       .join('');
   };
 
-  // --- Funções para Músicas ---
-  const handleAdicionarMusica = (musicaId) => {
+  // --- Funções para Músicas (Mantidas) ---
+  const handleAdicionarMusicas = (musicaId) => {
     const musicaJaAdicionada = musicasSelecionadas.some(m => m.musicaId === musicaId);
     if (musicaJaAdicionada) {
       Alert.alert('Atenção', 'Esta música já foi adicionada à escala.');
@@ -148,11 +215,12 @@ export default function CriarEscalasScreen({ navigation }) {
           musicaNome: musica.nome,
           cifra: musica.cifra,
           video: musica.video || '',
+          tom: musica.tom || '', // Inclui tom se disponível no documento da música
           cantores: [],
         },
       ]);
-      setModalMusicasVisible(false); // Fecha o modal após adicionar
-      setMusicaSearchQuery(''); // Limpa a busca
+      setModalMusicasVisible(false);
+      setMusicaSearchQuery('');
     }
   };
 
@@ -161,13 +229,8 @@ export default function CriarEscalasScreen({ navigation }) {
       'Remover Música',
       'Tem certeza que deseja remover esta música da escala?',
       [
-        {
-          text: 'Cancelar',
-          style: 'cancel',
-        },
-        {
-          text: 'Remover',
-          onPress: () => {
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Remover', onPress: () => {
             setMusicasSelecionadas(prev => prev.filter((_, i) => i !== index));
           },
         },
@@ -186,19 +249,18 @@ export default function CriarEscalasScreen({ navigation }) {
     setMusicasSelecionadas(newMusicas);
   };
 
-  // Função para extrair o ID do vídeo do YouTube e montar a URL de embed
+  // Função mais robusta para extrair o ID do vídeo do YouTube e montar a URL de embed
   const getYouTubeEmbedUrl = (url) => {
     if (!url) return null;
-
     const regExp = /(?:https?:\/\/)?(?:www\.)?(?:m\.)?(?:youtube\.com|youtu\.be)\/(?:watch\?v=|embed\/|v\/|)([\w-]{11})(?:\S+)?/i;
     const match = url.match(regExp);
     if (match && match[1]) {
+      // Adiciona parâmetros para um player mais limpo (sem logo YouTube, sem vídeos relacionados)
       return `https://www.youtube.com/embed/${match[1]}?modestbranding=1&rel=0`;
     }
     return null;
   };
 
-  // Funções para cantores da música
   const openCantoresMusicaModal = (index) => {
     setCurrentMusicIndexForSingers(index);
     setModalCantoresMusicaVisible(true);
@@ -235,38 +297,44 @@ export default function CriarEscalasScreen({ navigation }) {
     });
   };
 
-  // --- Função para Criar Escala ---
-  const criarEscala = async () => {
+  // --- Função para Salvar Edições na Escala (Update) ---
+  const salvarEdicaoEscala = async () => {
     if (!dataCulto) {
       Alert.alert('Erro', 'Por favor, selecione a data do culto.');
       return;
     }
-
     if (marcarEnsaio && (!dataEnsaio || !horaEnsaio)) {
       Alert.alert('Erro', 'Por favor, preencha a data e hora do ensaio.');
       return;
     }
-
     if (ministrosEscalados.length === 0) {
       Alert.alert('Erro', 'Por favor, escale ao menos um músico.');
       return;
     }
-
     if (musicasSelecionadas.length === 0) {
       Alert.alert('Erro', 'Por favor, adicione ao menos uma música.');
+      return;
+    }
+    if (!userChurchId) {
+      Alert.alert('Erro', 'Não foi possível determinar a igreja do usuário.');
+      return;
+    }
+    if (!escala || !escala.id) {
+      Alert.alert('Erro', 'ID da escala não encontrado para atualização.');
       return;
     }
 
     try {
       const currentUser = auth.currentUser;
       if (!currentUser) {
-        Alert.alert('Erro', 'Você precisa estar logado para criar uma escala.');
+        Alert.alert('Erro', 'Você precisa estar logado para editar uma escala.');
         return;
       }
 
-      await addDoc(collection(db, 'escalas'), {
-        criadoEm: new Date(),
-        criadoPor: currentUser.uid,
+      // Referência ao documento da escala a ser atualizada
+      const escalaRef = doc(db, 'igrejas', userChurchId, 'escalas', escala.id);
+
+      await updateDoc(escalaRef, {
         dataCulto: dataCulto,
         ensaio: marcarEnsaio,
         dataEnsaio: marcarEnsaio ? dataEnsaio : null,
@@ -277,27 +345,76 @@ export default function CriarEscalasScreen({ navigation }) {
           musicaId: m.musicaId,
           musicaNome: m.musicaNome,
           video: m.video,
+          tom: m.tom || '', // Garante que 'tom' é incluído se disponível na música da escala
         })),
         usuariosEscalados: ministrosEscalados,
+        ultimaEdicaoEm: new Date(), // Adiciona um timestamp da última edição
+        editadoPor: currentUser.uid, // Registra quem editou
       });
 
-      Alert.alert('Sucesso', 'Escala criada com sucesso!');
-      setDataCulto('');
-      setMarcarEnsaio(false);
-      setDataEnsaio('');
-      setHoraEnsaio('');
-      setMinistrosEscalados([]);
-      setMusicasSelecionadas([]);
-      navigation.goBack?.();
+      Alert.alert('Sucesso', 'Escala atualizada com sucesso!');
+      navigation.goBack?.(); // Volta para a tela anterior após atualização bem-sucedida
     } catch (e) {
-      console.error('Erro ao criar escala:', e);
-      Alert.alert('Erro', 'Não foi possível criar a escala. Tente novamente.');
+      console.error('Erro ao salvar edição da escala:', e);
+      Alert.alert('Erro', 'Não foi possível atualizar a escala. Tente novamente.');
     }
   };
+
+  // --- Função para Deletar Escala ---
+  const deletarEscala = () => {
+    Alert.alert(
+      'Confirmar Exclusão',
+      'Tem certeza que deseja DELETAR esta escala? Esta ação é irreversível.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Deletar', style: 'destructive', onPress: async () => {
+            if (!userChurchId || !escala || !escala.id) {
+              Alert.alert('Erro', 'Não foi possível deletar a escala. Dados incompletos.');
+              return;
+            }
+            try {
+              const escalaRef = doc(db, 'igrejas', userChurchId, 'escalas', escala.id);
+              await deleteDoc(escalaRef);
+              Alert.alert('Sucesso', 'Escala deletada com sucesso!');
+              navigation.goBack?.(); // Volta para a tela anterior após a exclusão
+            } catch (e) {
+              console.error('Erro ao deletar escala:', e);
+              Alert.alert('Erro', 'Não foi possível deletar a escala. Tente novamente.');
+            }
+          },
+        },
+      ],
+      { cancelable: true }
+    );
+  };
+
+  // Renderiza estado de carregamento
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#003D29" />
+        <Text style={styles.loadingText}>Carregando escala para edição...</Text>
+      </View>
+    );
+  }
+
+  // Renderiza estado de erro
+  if (telaErro) {
+    return (
+      <View style={styles.errorContainer}>
+        <Text style={styles.errorText}>{telaErro}</Text>
+        <TouchableOpacity style={styles.button} onPress={() => navigation.goBack()}>
+          <Text style={styles.buttonText}>Voltar</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <>
       <ScrollView contentContainerStyle={styles.container}>
+        <Text style={styles.header}>Editar Escala</Text>
+
         {/* Input de Data do Culto */}
         <TouchableOpacity onPress={() => setShowDatePickerCulto(true)}>
           <TextInput
@@ -310,7 +427,8 @@ export default function CriarEscalasScreen({ navigation }) {
         {showDatePickerCulto && (
           <DateTimePicker
             testID="datePickerCulto"
-            value={new Date()}
+            // Inicializa com a data atual da escala ou a data de hoje se vazia
+            value={dataCulto ? new Date(dataCulto) : new Date()}
             mode="date"
             display="default"
             onChange={onChangeCultoDate}
@@ -343,7 +461,8 @@ export default function CriarEscalasScreen({ navigation }) {
             {showDatePickerEnsaio && (
               <DateTimePicker
                 testID="datePickerEnsaio"
-                value={new Date()}
+                // Inicializa com a data atual do ensaio ou a data de hoje se vazia
+                value={dataEnsaio ? new Date(dataEnsaio) : new Date()}
                 mode="date"
                 display="default"
                 onChange={onChangeEnsaioDate}
@@ -361,7 +480,8 @@ export default function CriarEscalasScreen({ navigation }) {
             {showTimePickerEnsaio && (
               <DateTimePicker
                 testID="timePickerEnsaio"
-                value={new Date()}
+                // Usa uma data fictícia para inicializar o picker de tempo
+                value={horaEnsaio ? new Date(`2000-01-01T${horaEnsaio}`) : new Date()}
                 mode="time"
                 is24Hour={true}
                 display="default"
@@ -387,16 +507,12 @@ export default function CriarEscalasScreen({ navigation }) {
                   <Text style={styles.removeButtonText}>×</Text>
                 </TouchableOpacity>
 
-                {ministro.fotoURL ? (
-                  <Image source={{ uri: ministro.fotoURL }} style={styles.avatar} />
+                {ministro.foto ? ( // Usando 'ministro.foto' conforme a estrutura de dados
+                  <Image source={{ uri: ministro.foto }} style={styles.avatar} />
                 ) : (
                   <View style={[styles.avatar, styles.avatarSemFoto]}>
                     <Text style={styles.avatarIniciais}>
-                      {ministro.nome
-                        .split(' ')
-                        .slice(0, 2)
-                        .map(p => p[0].toUpperCase())
-                        .join('')}
+                      {getMinistroIniciaisById(id)}
                     </Text>
                   </View>
                 )}
@@ -430,9 +546,14 @@ export default function CriarEscalasScreen({ navigation }) {
           return (
             <View key={index} style={styles.musicaCard}>
               <Text style={styles.musicaTitle}>{index + 1}. {musica.musicaNome}</Text>
-              <TouchableOpacity onPress={() => handleOpenCifra(musica.cifra)}>
-                <Text style={styles.musicaLink}>Cifra: {musica.cifra}</Text>
-              </TouchableOpacity>
+              {musica.cifra && (
+                <TouchableOpacity onPress={() => handleOpenCifra(musica.cifra)}>
+                  <Text style={styles.musicaLink}>Cifra: {musica.cifra}</Text>
+                </TouchableOpacity>
+              )}
+              {musica.tom && ( // Exibe o tom da música se disponível
+                <Text style={styles.musicaSubTitle}>Tom: {musica.tom}</Text>
+              )}
               <TextInput
                 style={styles.input}
                 placeholder="Link do vídeo (se já tiver cadastrado)"
@@ -463,16 +584,12 @@ export default function CriarEscalasScreen({ navigation }) {
                       >
                         <Text style={styles.removeButtonText}>×</Text>
                       </TouchableOpacity>
-                      {cantor.fotoURL ? (
-                        <Image source={{ uri: cantor.fotoURL }} style={styles.avatar} />
+                      {cantor.foto ? ( // Usando 'cantor.foto'
+                        <Image source={{ uri: cantor.foto }} style={styles.avatar} />
                       ) : (
                         <View style={[styles.avatar, styles.avatarSemFoto]}>
                           <Text style={styles.avatarIniciais}>
-                            {cantor.nome
-                              .split(' ')
-                              .slice(0, 2)
-                              .map(p => p[0].toUpperCase())
-                              .join('')}
+                            {getMinistroIniciaisById(cantorId)}
                           </Text>
                         </View>
                       )}
@@ -497,9 +614,14 @@ export default function CriarEscalasScreen({ navigation }) {
           );
         })}
 
-        {/* Botão Criar Escala */}
-        <TouchableOpacity style={styles.button} onPress={criarEscala}>
-          <Text style={styles.buttonText}>CRIAR ESCALA</Text>
+        {/* Botão Salvar Edição */}
+        <TouchableOpacity style={styles.button} onPress={salvarEdicaoEscala}>
+          <Text style={styles.buttonText}>SALVAR EDIÇÃO DA ESCALA</Text>
+        </TouchableOpacity>
+
+        {/* Botão Deletar Escala */}
+        <TouchableOpacity style={[styles.button, styles.deleteButton]} onPress={deletarEscala}>
+          <Text style={styles.buttonText}>DELETAR ESCALA</Text>
         </TouchableOpacity>
 
         {/* Modal para Adicionar Músicos (Geral) */}
@@ -522,16 +644,12 @@ export default function CriarEscalasScreen({ navigation }) {
                       ministrosEscalados.includes(m.id) && styles.modalItemSelected,
                     ]}
                   >
-                    {m.fotoURL ? (
-                      <Image source={{ uri: m.fotoURL }} style={styles.avatar} />
+                    {m.foto ? ( // Usando 'm.foto'
+                      <Image source={{ uri: m.foto }} style={styles.avatar} />
                     ) : (
                       <View style={[styles.avatar, styles.avatarSemFoto]}>
                         <Text style={styles.avatarIniciais}>
-                          {m.nome
-                            .split(' ')
-                            .slice(0, 2)
-                            .map(p => p[0].toUpperCase())
-                            .join('')}
+                          {getMinistroIniciaisById(m.id)}
                         </Text>
                       </View>
                     )}
@@ -553,7 +671,7 @@ export default function CriarEscalasScreen({ navigation }) {
           animationType="slide"
           onRequestClose={() => {
             setModalMusicasVisible(false);
-            setMusicaSearchQuery(''); // Limpa a busca ao fechar
+            setMusicaSearchQuery('');
           }}
         >
           <View style={styles.modalContainer}>
@@ -570,12 +688,12 @@ export default function CriarEscalasScreen({ navigation }) {
                   filteredMusicas.map(musica => (
                     <TouchableOpacity
                       key={musica.id}
-                      onPress={() => handleAdicionarMusica(musica.id)}
+                      onPress={() => handleAdicionarMusicas(musica.id)}
                       style={[
                         styles.modalItem,
                         musicasSelecionadas.some(m => m.musicaId === musica.id) && styles.modalItemSelected,
                       ]}
-                      disabled={musicasSelecionadas.some(m => m.musicaId === musica.id)} // Desabilita se já selecionada
+                      disabled={musicasSelecionadas.some(m => m.musicaId === musica.id)}
                     >
                       <Text style={{ marginLeft: 10, flex: 1 }}>{musica.nome}</Text>
                       {musicasSelecionadas.some(m => m.musicaId === musica.id) && (
@@ -612,32 +730,28 @@ export default function CriarEscalasScreen({ navigation }) {
               <Text style={styles.modalTitle}>Adicionar Cantores para a Música</Text>
               <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
                 {ministros
-                  .filter(m => m.area === 'Cantor(a)' && ministrosEscalados.includes(m.id)) // Filtra por ministros que são 'Cantor(a)' e já estão escalados em 'Músicos'
+                  .filter(m => m.area === 'Cantor(a)' && ministrosEscalados.includes(m.id))
                   .map(m => (
-                  <TouchableOpacity
-                    key={m.id}
-                    onPress={() => toggleCantorMusica(m.id)}
-                    style={[
-                      styles.modalItem,
-                      getCantoresSelecionadosParaMusica(currentMusicIndexForSingers)?.includes(m.id) && styles.modalItemSelected,
-                    ]}
-                  >
-                    {m.fotoURL ? (
-                      <Image source={{ uri: m.fotoURL }} style={styles.avatar} />
-                    ) : (
-                      <View style={[styles.avatar, styles.avatarSemFoto]}>
-                        <Text style={styles.avatarIniciais}>
-                          {m.nome
-                            .split(' ')
-                            .slice(0, 2)
-                            .map(p => p[0].toUpperCase())
-                            .join('')}
-                        </Text>
-                      </View>
-                    )}
-                    <Text style={{ marginLeft: 10 }}>{m.nome} ({m.area})</Text>
-                  </TouchableOpacity>
-                ))}
+                    <TouchableOpacity
+                      key={m.id}
+                      onPress={() => toggleCantorMusica(m.id)}
+                      style={[
+                        styles.modalItem,
+                        getCantoresSelecionadosParaMusica(currentMusicIndexForSingers)?.includes(m.id) && styles.modalItemSelected,
+                      ]}
+                    >
+                      {m.foto ? ( // Usando 'm.foto'
+                        <Image source={{ uri: m.foto }} style={styles.avatar} />
+                      ) : (
+                        <View style={[styles.avatar, styles.avatarSemFoto]}>
+                          <Text style={styles.avatarIniciais}>
+                            {getMinistroIniciaisById(m.id)}
+                          </Text>
+                        </View>
+                      )}
+                      <Text style={{ marginLeft: 10 }}>{m.nome} ({m.area})</Text>
+                    </TouchableOpacity>
+                  ))}
               </ScrollView>
               <TouchableOpacity style={styles.button} onPress={() => setModalCantoresMusicaVisible(false)}>
                 <Text style={styles.buttonText}>FECHAR</Text>
@@ -656,6 +770,30 @@ const styles = StyleSheet.create({
     padding: 20,
     backgroundColor: '#fff',
     flexGrow: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F5F6FA',
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#003D29',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+    backgroundColor: '#F5F6FA',
+  },
+  errorText: {
+    textAlign: 'center',
+    color: 'red',
+    fontSize: 16,
+    marginBottom: 20,
   },
   header: {
     fontSize: 22,
@@ -759,7 +897,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 2,
     elevation: 2,
-    shadowColor: '#000', 
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.2,
     shadowRadius: 1.41,
@@ -787,6 +925,10 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 16,
     letterSpacing: 1,
+  },
+  deleteButton: {
+    backgroundColor: '#dc3545', // Cor vermelha para o botão de deletar
+    marginTop: 10, // Espaçamento extra do botão de salvar
   },
   modalContainer: {
     flex: 1,
