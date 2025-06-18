@@ -11,10 +11,11 @@ import {
   Modal,
   Switch,
   Linking,
+  ActivityIndicator, // ADDED: Import ActivityIndicator
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { db, auth } from '../../services/firebase';
-import { collection, addDoc, getDocs } from 'firebase/firestore';
+import { collection, addDoc, getDocs, doc, getDoc, query, where } from 'firebase/firestore';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import BottomTab from '../../components/BottomTab';
 
@@ -27,38 +28,109 @@ export default function CriarEscalasScreen({ navigation }) {
   const [showDatePickerEnsaio, setShowDatePickerEnsaio] = useState(false);
   const [showTimePickerEnsaio, setShowTimePickerEnsaio] = useState(false);
 
-  const [ministros, setMinistros] = useState([]);
-  const [ministrosEscalados, setMinistrosEscalados] = useState([]);
+  const [ministros, setMinistros] = useState([]); // All active users from the church
+  const [ministrosEscalados, setMinistrosEscalados] = useState([]); // IDs of selected ministers for the scale
   const [modalMinistrosVisible, setModalMinistrosVisible] = useState(false);
 
   const [musicasDisponiveis, setMusicasDisponiveis] = useState([]);
   const [musicasSelecionadas, setMusicasSelecionadas] = useState([]);
-  const [modalMusicasVisible, setModalMusicasVisible] = useState(false); // Novo modal para busca de músicas
-  const [musicaSearchQuery, setMusicaSearchQuery] = useState(''); // Estado para o input de busca de músicas
-  const [filteredMusicas, setFilteredMusicas] = useState([]); // Músicas filtradas pela busca
-  const [currentMusicIndexForSingers, setCurrentMusicIndexForSingers] = useState(null); // Para saber qual música estamos editando os cantores
-  const [modalCantoresMusicaVisible, setModalCantoresMusicaVisible] = useState(false); // Modal para selecionar cantores da música
+  const [modalMusicasVisible, setModalMusicasVisible] = useState(false);
+  const [musicaSearchQuery, setMusicaSearchQuery] = useState('');
+  const [filteredMusicas, setFilteredMusicas] = useState([]);
+  const [currentMusicIndexForSingers, setCurrentMusicIndexForSingers] = useState(null);
+  const [modalCantoresMusicaVisible, setModalCantoresMusicaVisible] = useState(false);
+
+  const [userChurchId, setUserChurchId] = useState(null);
+  const [loading, setLoading] = useState(true); // ADDED: Loading state for data fetching
+  const [telaErro, setTelaErro] = useState(''); // ADDED: State to display errors
+
+  // ADDED: State for minister search query and filtered ministers in modal
+  const [cantorSearchQuery, setCantorSearchQuery] = useState('');
+  const [filteredMinistros, setFilteredMinistros] = useState([]);
 
   useEffect(() => {
-    const carregarDados = async () => {
+    const carregarDadosDoUsuarioEIgreja = async () => {
+      setLoading(true); // Set loading true at the start
+      setTelaErro(''); // Clear any previous errors
+
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        Alert.alert('Erro', 'Usuário não autenticado.');
+        setTelaErro('Usuário não autenticado. Por favor, faça login.'); // Set error for display
+        setLoading(false); // Stop loading
+        navigation.navigate('Login'); // Redirect to login
+        return;
+      }
+
       try {
-        // Carregar ministros
-        const ministrosSnap = await getDocs(collection(db, 'ministros'));
+        let foundIgrejaId = null;
+
+        // Try to find the user's church ID by querying all churches
+        const igrejasSnapshot = await getDocs(collection(db, 'igrejas'));
+
+        for (const docIgreja of igrejasSnapshot.docs) {
+          const usuarioDocRef = doc(db, 'igrejas', docIgreja.id, 'usuarios', currentUser.uid);
+          const usuarioDocSnap = await getDoc(usuarioDocRef);
+
+          if (usuarioDocSnap.exists()) {
+            foundIgrejaId = docIgreja.id; // Found the user's church
+            break;
+          }
+        }
+
+        if (!foundIgrejaId) {
+          Alert.alert('Erro', 'Não foi possível encontrar a igreja associada ao seu usuário.');
+          setTelaErro('Não foi possível encontrar a igreja associada ao seu usuário.');
+          setLoading(false);
+          // Talvez redirecionar para uma tela de configuração de igreja ou logout
+          navigation.goBack();
+          return;
+        }
+
+        setUserChurchId(foundIgrejaId);
+
+        // Carregar ministros (usuários) aprovados da igreja específica
+        const ministrosQuery = query(
+          collection(db, 'igrejas', foundIgrejaId, 'usuarios'), // Use foundIgrejaId here
+          where('aprovado', '==', true) // Filter only approved users
+        );
+        const ministrosSnap = await getDocs(ministrosQuery);
         const listaMinistros = ministrosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         setMinistros(listaMinistros);
+        setFilteredMinistros(listaMinistros); // Initialize filtered list with all ministers
 
-        // Carregar músicas
-        const musicasSnap = await getDocs(collection(db, 'musicas'));
+        // Carregar músicas da igreja específica
+        const musicasQuery = collection(db, 'igrejas', foundIgrejaId, 'musicas'); // Use foundIgrejaId here
+        const musicasSnap = await getDocs(musicasQuery);
         const listaMusicas = musicasSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         setMusicasDisponiveis(listaMusicas);
-        setFilteredMusicas(listaMusicas); // Inicializa as músicas filtradas
+        setFilteredMusicas(listaMusicas); // Initialize filtered list
       } catch (error) {
-        console.error('Erro ao buscar dados:', error);
+        console.error('Erro ao buscar dados do usuário ou da igreja:', error);
         Alert.alert('Erro', 'Não foi possível carregar os dados. Tente novamente mais tarde.');
+        setTelaErro('Erro ao carregar dados. Tente novamente.');
+      } finally {
+        setLoading(false); // Stop loading regardless of success or error
       }
     };
-    carregarDados();
-  }, []);
+    carregarDadosDoUsuarioEIgreja();
+  }, [navigation]); // Added navigation to dependency array as it's used inside
+
+  // ADDED: Effect to filter ministers when search query or available ministers change
+  useEffect(() => {
+    if (cantorSearchQuery) {
+      const lowerCaseQuery = cantorSearchQuery.toLowerCase();
+      const filtered = ministros.filter(user =>
+        user.nome.toLowerCase().includes(lowerCaseQuery) ||
+        (user.sobrenome && user.sobrenome.toLowerCase().includes(lowerCaseQuery)) ||
+        (user.area && user.area.toLowerCase().includes(lowerCaseQuery)) // Allow searching by area too
+      );
+      setFilteredMinistros(filtered);
+    } else {
+      setFilteredMinistros(ministros);
+    }
+  }, [cantorSearchQuery, ministros]);
+
 
   // Efeito para filtrar músicas quando a busca ou a lista de músicas disponíveis muda
   useEffect(() => {
@@ -116,15 +188,18 @@ export default function CriarEscalasScreen({ navigation }) {
     return ministro ? ministro.nome : 'Ministro Desconhecido';
   };
 
+  // Corrected to use 'foto' field as per your data structure
   const getMinistroFotoById = (id) => {
     const ministro = ministros.find(m => m.id === id);
-    return ministro ? ministro.fotoURL : null;
+    return ministro ? ministro.foto : null; // Changed from fotoURL to foto
   };
 
+  // Corrected to include sobrenome in initials
   const getMinistroIniciaisById = (id) => {
     const ministro = ministros.find(m => m.id === id);
     if (!ministro || !ministro.nome) return '';
-    return ministro.nome
+    const nomeCompleto = `${ministro.nome} ${ministro.sobrenome || ''}`.trim();
+    return nomeCompleto
       .split(' ')
       .slice(0, 2)
       .map(p => p[0].toUpperCase())
@@ -148,6 +223,7 @@ export default function CriarEscalasScreen({ navigation }) {
           musicaNome: musica.nome,
           cifra: musica.cifra,
           video: musica.video || '',
+          tom: musica.tom || '', // Added 'tom' field for consistency if needed in scale music data
           cantores: [],
         },
       ]);
@@ -263,10 +339,16 @@ export default function CriarEscalasScreen({ navigation }) {
         Alert.alert('Erro', 'Você precisa estar logado para criar uma escala.');
         return;
       }
+      if (!userChurchId) {
+        Alert.alert('Erro', 'Não foi possível determinar a igreja do usuário.');
+        return;
+      }
 
-      await addDoc(collection(db, 'escalas'), {
+      // Adicionar a escala dentro da subcollection 'escalas' da igreja
+      await addDoc(collection(db, 'igrejas', userChurchId, 'escalas'), {
         criadoEm: new Date(),
         criadoPor: currentUser.uid,
+        igrejaId: userChurchId, // Adiciona o ID da igreja à escala
         dataCulto: dataCulto,
         ensaio: marcarEnsaio,
         dataEnsaio: marcarEnsaio ? dataEnsaio : null,
@@ -277,6 +359,7 @@ export default function CriarEscalasScreen({ navigation }) {
           musicaId: m.musicaId,
           musicaNome: m.musicaNome,
           video: m.video,
+          tom: m.tom || '', // Include tom in the saved scale music data
         })),
         usuariosEscalados: ministrosEscalados,
       });
@@ -294,6 +377,27 @@ export default function CriarEscalasScreen({ navigation }) {
       Alert.alert('Erro', 'Não foi possível criar a escala. Tente novamente.');
     }
   };
+
+  // ADDED: Loading and Error UI
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#003D29" />
+        <Text style={styles.loadingText}>Carregando dados da igreja...</Text>
+      </View>
+    );
+  }
+
+  if (telaErro) {
+    return (
+      <View style={styles.errorContainer}>
+        <Text style={styles.errorText}>{telaErro}</Text>
+        <TouchableOpacity style={styles.button} onPress={() => navigation.goBack()}>
+          <Text style={styles.buttonText}>Voltar</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <>
@@ -387,16 +491,12 @@ export default function CriarEscalasScreen({ navigation }) {
                   <Text style={styles.removeButtonText}>×</Text>
                 </TouchableOpacity>
 
-                {ministro.fotoURL ? (
-                  <Image source={{ uri: ministro.fotoURL }} style={styles.avatar} />
+                {ministro.foto ? ( // Corrected from fotoURL to foto
+                  <Image source={{ uri: ministro.foto }} style={styles.avatar} />
                 ) : (
                   <View style={[styles.avatar, styles.avatarSemFoto]}>
                     <Text style={styles.avatarIniciais}>
-                      {ministro.nome
-                        .split(' ')
-                        .slice(0, 2)
-                        .map(p => p[0].toUpperCase())
-                        .join('')}
+                      {getMinistroIniciaisById(id)}
                     </Text>
                   </View>
                 )}
@@ -430,9 +530,14 @@ export default function CriarEscalasScreen({ navigation }) {
           return (
             <View key={index} style={styles.musicaCard}>
               <Text style={styles.musicaTitle}>{index + 1}. {musica.musicaNome}</Text>
-              <TouchableOpacity onPress={() => handleOpenCifra(musica.cifra)}>
-                <Text style={styles.musicaLink}>Cifra: {musica.cifra}</Text>
-              </TouchableOpacity>
+              {musica.cifra && (
+                <TouchableOpacity onPress={() => handleOpenCifra(musica.cifra)}>
+                  <Text style={styles.musicaLink}>Cifra: {musica.cifra}</Text>
+                </TouchableOpacity>
+              )}
+              {musica.tom && ( // Display 'tom' if it exists
+                <Text style={styles.musicaSubTitle}>Tom: {musica.tom}</Text>
+              )}
               <TextInput
                 style={styles.input}
                 placeholder="Link do vídeo (se já tiver cadastrado)"
@@ -463,16 +568,12 @@ export default function CriarEscalasScreen({ navigation }) {
                       >
                         <Text style={styles.removeButtonText}>×</Text>
                       </TouchableOpacity>
-                      {cantor.fotoURL ? (
-                        <Image source={{ uri: cantor.fotoURL }} style={styles.avatar} />
+                      {cantor.foto ? ( // Corrected from fotoURL to foto
+                        <Image source={{ uri: cantor.foto }} style={styles.avatar} />
                       ) : (
                         <View style={[styles.avatar, styles.avatarSemFoto]}>
                           <Text style={styles.avatarIniciais}>
-                            {cantor.nome
-                              .split(' ')
-                              .slice(0, 2)
-                              .map(p => p[0].toUpperCase())
-                              .join('')}
+                            {getMinistroIniciaisById(cantorId)}
                           </Text>
                         </View>
                       )}
@@ -507,39 +608,53 @@ export default function CriarEscalasScreen({ navigation }) {
           visible={modalMinistrosVisible}
           transparent
           animationType="slide"
-          onRequestClose={() => setModalMinistrosVisible(false)}
+          onRequestClose={() => {
+            setModalMinistrosVisible(false);
+            setCantorSearchQuery(''); // Clear search on modal close
+          }}
         >
           <View style={styles.modalContainer}>
             <View style={styles.modalContent}>
               <Text style={styles.modalTitle}>Adicionar Músicos</Text>
+              {/* ADDED: Search input in the modal */}
+              <TextInput
+                style={styles.input}
+                placeholder="Buscar por nome ou área..."
+                value={cantorSearchQuery}
+                onChangeText={setCantorSearchQuery}
+              />
               <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
-                {ministros.map(m => (
-                  <TouchableOpacity
-                    key={m.id}
-                    onPress={() => toggleMinistroEscalado(m.id)}
-                    style={[
-                      styles.modalItem,
-                      ministrosEscalados.includes(m.id) && styles.modalItemSelected,
-                    ]}
-                  >
-                    {m.fotoURL ? (
-                      <Image source={{ uri: m.fotoURL }} style={styles.avatar} />
-                    ) : (
-                      <View style={[styles.avatar, styles.avatarSemFoto]}>
-                        <Text style={styles.avatarIniciais}>
-                          {m.nome
-                            .split(' ')
-                            .slice(0, 2)
-                            .map(p => p[0].toUpperCase())
-                            .join('')}
-                        </Text>
-                      </View>
-                    )}
-                    <Text style={{ marginLeft: 10 }}>{m.nome} ({m.area})</Text>
-                  </TouchableOpacity>
-                ))}
+                {filteredMinistros.length === 0 ? ( // Using filteredMinistros
+                  <Text style={styles.noResultsText}>Nenhum usuário ativo disponível na sua igreja.</Text>
+                ) : (
+                  // REMOVED: .filter(m => m.area === 'Cantor(a)')
+                  filteredMinistros.map(m => ( // Using filteredMinistros
+                    <TouchableOpacity
+                      key={m.id}
+                      onPress={() => toggleMinistroEscalado(m.id)}
+                      style={[
+                        styles.modalItem,
+                        ministrosEscalados.includes(m.id) && styles.modalItemSelected,
+                      ]}
+                    >
+                      {m.foto ? ( // Corrected from fotoURL to foto
+                        <Image source={{ uri: m.foto }} style={styles.avatar} />
+                      ) : (
+                        <View style={[styles.avatar, styles.avatarSemFoto]}>
+                          <Text style={styles.avatarIniciais}>
+                            {getMinistroIniciaisById(m.id)}
+                          </Text>
+                        </View>
+                      )}
+                      <Text style={{ marginLeft: 10 }}>{m.nome} ({m.area})</Text>
+                    </TouchableOpacity>
+                  ))
+                )}
               </ScrollView>
-              <TouchableOpacity style={styles.button} onPress={() => setModalMinistrosVisible(false)}>
+              <TouchableOpacity style={styles.button} onPress={() => {
+                setModalMinistrosVisible(false);
+                setCantorSearchQuery(''); // Clear search on close
+              }}>
                 <Text style={styles.buttonText}>FECHAR</Text>
               </TouchableOpacity>
             </View>
@@ -605,41 +720,54 @@ export default function CriarEscalasScreen({ navigation }) {
           visible={modalCantoresMusicaVisible}
           transparent
           animationType="slide"
-          onRequestClose={() => setModalCantoresMusicaVisible(false)}
+          onRequestClose={() => {
+            setModalCantoresMusicaVisible(false);
+            setCantorSearchQuery(''); // Clear search on modal close
+          }}
         >
           <View style={styles.modalContainer}>
             <View style={styles.modalContent}>
               <Text style={styles.modalTitle}>Adicionar Cantores para a Música</Text>
+              {/* ADDED: Search input in the modal */}
+              <TextInput
+                style={styles.input}
+                placeholder="Buscar por nome ou área..."
+                value={cantorSearchQuery}
+                onChangeText={setCantorSearchQuery}
+              />
               <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
-                {ministros
-                  .filter(m => m.area === 'Cantor(a)' && ministrosEscalados.includes(m.id)) // Filtra por ministros que são 'Cantor(a)' e já estão escalados em 'Músicos'
-                  .map(m => (
-                  <TouchableOpacity
-                    key={m.id}
-                    onPress={() => toggleCantorMusica(m.id)}
-                    style={[
-                      styles.modalItem,
-                      getCantoresSelecionadosParaMusica(currentMusicIndexForSingers)?.includes(m.id) && styles.modalItemSelected,
-                    ]}
-                  >
-                    {m.fotoURL ? (
-                      <Image source={{ uri: m.fotoURL }} style={styles.avatar} />
-                    ) : (
-                      <View style={[styles.avatar, styles.avatarSemFoto]}>
-                        <Text style={styles.avatarIniciais}>
-                          {m.nome
-                            .split(' ')
-                            .slice(0, 2)
-                            .map(p => p[0].toUpperCase())
-                            .join('')}
-                        </Text>
-                      </View>
-                    )}
-                    <Text style={{ marginLeft: 10 }}>{m.nome} ({m.area})</Text>
-                  </TouchableOpacity>
-                ))}
+                {ministros.length === 0 ? ( // Added check for empty list
+                  <Text style={styles.noResultsText}>Nenhum usuário ativo disponível na sua igreja.</Text>
+                ) : (
+                  // REMOVED: .filter(m => m.area === 'Cantor(a)' && ministrosEscalados.includes(m.id))
+                  // Now only filters by search query among the initially loaded ministers
+                  filteredMinistros.map(m => ( // Using filteredMinistros
+                    <TouchableOpacity
+                      key={m.id}
+                      onPress={() => toggleCantorMusica(m.id)}
+                      style={[
+                        styles.modalItem,
+                        getCantoresSelecionadosParaMusica(currentMusicIndexForSingers)?.includes(m.id) && styles.modalItemSelected,
+                      ]}
+                    >
+                      {m.foto ? ( // Corrected from fotoURL to foto
+                        <Image source={{ uri: m.foto }} style={styles.avatar} />
+                      ) : (
+                        <View style={[styles.avatar, styles.avatarSemFoto]}>
+                          <Text style={styles.avatarIniciais}>
+                            {getMinistroIniciaisById(m.id)}
+                          </Text>
+                        </View>
+                      )}
+                      <Text style={{ marginLeft: 10 }}>{m.nome} ({m.area})</Text>
+                    </TouchableOpacity>
+                  ))
+                )}
               </ScrollView>
-              <TouchableOpacity style={styles.button} onPress={() => setModalCantoresMusicaVisible(false)}>
+              <TouchableOpacity style={styles.button} onPress={() => {
+                setModalCantoresMusicaVisible(false);
+                setCantorSearchQuery(''); // Clear search on close
+              }}>
                 <Text style={styles.buttonText}>FECHAR</Text>
               </TouchableOpacity>
             </View>
@@ -657,12 +785,48 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     flexGrow: 1,
   },
-  header: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    marginBottom: 20,
+  loadingContainer: { // ADDED: Styles for loading
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F5F6FA',
+  },
+  loadingText: { // ADDED: Styles for loading text
+    marginTop: 10,
+    fontSize: 16,
+    color: '#003D29',
+  },
+  errorContainer: { // ADDED: Styles for error container
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+    backgroundColor: '#F5F6FA',
+  },
+  errorText: { // ADDED: Styles for error text
     textAlign: 'center',
-    color: '#333',
+    color: 'red',
+    fontSize: 16,
+    marginBottom: 20,
+  },
+  button: { // Re-added button styles from previous context for the error screen
+    backgroundColor: '#6ACF9E',
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+    marginTop: 30,
+    marginBottom: 20,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.23,
+    shadowRadius: 2.62,
+  },
+  buttonText: { // Re-added buttonText styles
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 16,
+    letterSpacing: 1,
   },
   input: {
     borderWidth: 1,
@@ -759,7 +923,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 2,
     elevation: 2,
-    shadowColor: '#000', 
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.2,
     shadowRadius: 1.41,
@@ -768,81 +932,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: 'bold',
     fontSize: 12,
-  },
-  button: {
-    backgroundColor: '#6ACF9E',
-    paddingVertical: 14,
-    borderRadius: 10,
-    alignItems: 'center',
-    marginTop: 30,
-    marginBottom: 20,
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.23,
-    shadowRadius: 2.62,
-  },
-  buttonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 16,
-    letterSpacing: 1,
-  },
-  modalContainer: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalContent: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 20,
-    width: '85%',
-    maxHeight: '75%',
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 15,
-    textAlign: 'center',
-    color: '#333',
-  },
-  modalItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    marginBottom: 5,
-    paddingHorizontal: 10,
-  },
-  modalItemSelected: {
-    backgroundColor: '#e0ffe0',
-    borderColor: '#6ACF9E',
-    borderWidth: 1,
-  },
-  inputPickerContainer: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 8,
-    marginBottom: 12,
-    paddingVertical: 0,
-  },
-  picker: {
-    height: 50,
-    width: '100%',
-    color: '#333',
-  },
-  pickerItem: {
-    fontSize: 16,
   },
   musicaCard: {
     backgroundColor: '#f8f8f8',
@@ -917,6 +1006,47 @@ const styles = StyleSheet.create({
   pickerInputSimulatedText: {
     fontSize: 16,
     color: '#777',
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    width: '85%',
+    maxHeight: '75%',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 15,
+    textAlign: 'center',
+    color: '#333',
+  },
+  modalItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    marginBottom: 5,
+    paddingHorizontal: 10,
+  },
+  modalItemSelected: {
+    backgroundColor: '#e0ffe0',
+    borderColor: '#6ACF9E',
+    borderWidth: 1,
   },
   noResultsText: {
     textAlign: 'center',

@@ -2,19 +2,20 @@
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { SafeAreaProvider } from 'react-native-safe-area-context'; // <-- IMPORTANTE
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 // Importando Cadastros
-import RegisterScreen from './screens/Cadastro/RegisterScreen';
-import RegisterMinisterScreen from './screens/Cadastro/RegisterMinisterScreen';
+import CadastroLiderScreen from './screens/Cadastro/CadastroLiderScreen';
+import CadastroMembroScreen from './screens/Cadastro/CadastroMembroScreen';
 
 // Importando telas de login e home
-import LoginScreen from './screens/LoginScreen';
+import LoginScreen from './screens/Auth/LoginScreen';
 import HomeScreen from './screens/HomeScreen';
 import PerfilScreen from './screens/PerfilScreen';
 
 // Importando a tela de Adicionar Músicas
 import AdicionarMusicasScreen from './screens/Musicas/AdicionarMusicasScreen';
+import EditarMusicaScreen from './screens/Musicas/EditarMusicaScreen';
 import MusicasScreen from './screens/Musicas/MusicasScreen';
 import DetalhesScreen from './screens/Musicas/DetalhesScreen';
 
@@ -34,8 +35,8 @@ export default function App() {
         <Stack.Navigator initialRouteName="Login">
           {/* Antes do login */}
           <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="Register" component={RegisterScreen} options={{ title: 'Cadastro' }} />
-          <Stack.Screen name="RegisterMinister" component={RegisterMinisterScreen} options={{ title: 'Cadastro de Ministro' }} />
+          <Stack.Screen name="CadastroLider" component={CadastroLiderScreen} options={{ title: 'Cadastro de Líder' }} />
+          <Stack.Screen name="CadastroMembro" component={CadastroMembroScreen} options={{ title: 'Cadastro de Membro' }} />
           <Stack.Screen name="Pagamento" component={PagamentoScreen} options={{ title: 'Detalhes de Pagamento' }} />
 
           {/* Após login */}
@@ -43,14 +44,14 @@ export default function App() {
           <Stack.Screen name="Escalas" component={EscalasScreen} />
           <Stack.Screen name="CriarEscalas" component={CriarEscalasScreen} />
           <Stack.Screen name="Musicas" component={MusicasScreen} />
+          <Stack.Screen name="EditarMusica" component={EditarMusicaScreen} />
           <Stack.Screen name="AdicionarMusicas" component={AdicionarMusicasScreen} />
           <Stack.Screen name="MusicaDetalhes" component={DetalhesScreen} options={{ headerShown: false }} />
           <Stack.Screen name="EscalaDetalhes" component={EscalaDetalhesScreen} options={{ title: 'Detalhes da Escala' }} />
+          
           {/* Perfil e Membros */}
           <Stack.Screen name="Perfil" component={PerfilScreen} />
-          <Stack.Screen name="Membros" component={RegisterMinisterScreen} />
-
-
+          <Stack.Screen name="Membros" component={CadastroMembroScreen} />
         </Stack.Navigator>
       </NavigationContainer>
     </SafeAreaProvider>

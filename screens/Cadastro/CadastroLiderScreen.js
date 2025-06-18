@@ -16,9 +16,9 @@ import {
 import { AntDesign, Feather, MaterialIcons } from '@expo/vector-icons';
 import { auth, db } from '../../services/firebase';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { doc, setDoc, getDocs, query, collection, where } from 'firebase/firestore';
+import { doc, setDoc, getDocs, query, collection, where, writeBatch } from 'firebase/firestore';
 
-export default function Cadastro({ navigation }) {
+export default function CadastroLiderScreen({ navigation }) {
   const [nome, setNome] = useState('');
   const [sobrenome, setSobrenome] = useState('');
   const [musicoArea, setMusicoArea] = useState('');
@@ -29,7 +29,7 @@ export default function Cadastro({ navigation }) {
   const [erro, setErro] = useState('');
   const [sucesso, setSucesso] = useState('');
   const [isAreaPickerVisible, setIsAreaPickerVisible] = useState(false);
-  const [isRegistering, setIsRegistering] = useState(false);
+  const [isCadastroLidering, setIsCadastroLidering] = useState(false);
 
   const [nomeIgreja, setNomeIgreja] = useState('');
 
@@ -50,74 +50,91 @@ export default function Cadastro({ navigation }) {
   const cadastrar = async () => {
     setErro('');
     setSucesso('');
-    setIsRegistering(true);
+    setIsCadastroLidering(true);
 
     if (!nome || !sobrenome || !email || !senha || !musicoArea || !telefone || !nomeIgreja) {
       setErro('Por favor, preencha todos os campos obrigatórios (incluindo o nome da igreja).');
-      setIsRegistering(false);
+      setIsCadastroLidering(false);
       return;
     }
 
     if (senha.length < 6) {
       setErro('A senha deve ter pelo menos 6 caracteres.');
-      setIsRegistering(false);
+      setIsCadastroLidering(false);
       return;
     }
 
     try {
-      const lideresRef = collection(db, 'lideres');
+      const igrejasRef = collection(db, 'igrejas');
+      const qIgrejaExistente = query(igrejasRef, where('nomeIgreja', '==', nomeIgreja));
+      const querySnapshotIgrejaExistente = await getDocs(qIgrejaExistente);
 
-      // 1. Verificar se já existe um líder com este e-mail PENDENTE de aprovação
-      const qExistente = query(lideresRef, where('email', '==', email), where('aprovado', '==', false));
-      const querySnapshotExistente = await getDocs(qExistente);
+      if (!querySnapshotIgrejaExistente.empty) {
+        setErro('Já existe uma igreja cadastrada com este nome. Por favor, verifique o nome ou entre em contato com o suporte.');
+        setIsCadastroLidering(false);
+        return;
+      }
 
-      if (!querySnapshotExistente.empty) {
-        // Encontrou um cadastro pendente com o mesmo e-mail
-        const userIdExistente = querySnapshotExistente.docs[0].id;
+      const usuariosRef = collection(db, 'usuarios');
+      const qEmailPendente = query(usuariosRef,
+        where('email', '==', email),
+        where('aprovado', '==', false));
+      const querySnapshotEmailPendente = await getDocs(qEmailPendente);
+
+      if (!querySnapshotEmailPendente.empty) {
+        const userIdExistente = querySnapshotEmailPendente.docs[0].id;
         Alert.alert(
           'Cadastro Pendente!',
           'Já existe um cadastro para este e-mail aguardando a finalização do pagamento. Você será redirecionado para a página de informações de pagamento.',
           [
             {
               text: 'OK',
-              onPress: () => navigation.replace('Pagamento', { userId: userIdExistente })
+              onPress: () => navigation.replace('Pagamento', { userId: userIdExistente, igrejaId: querySnapshotEmailPendente.docs[0].data().igrejaId })
             },
           ],
           { cancelable: false }
         );
-        setIsRegistering(false);
-        return; // Sai da função para não prosseguir com novo cadastro
-      }
-
-      // 2. Verificar se já existe um líder cadastrado para esta igreja
-      const qIgrejaExistente = query(lideresRef, where('nomeIgreja', '==', nomeIgreja));
-      const querySnapshotIgrejaExistente = await getDocs(qIgrejaExistente);
-
-      if (!querySnapshotIgrejaExistente.empty) {
-        setErro('Já existe um líder cadastrado para esta igreja. Por favor, entre em contato com o suporte ou use outra igreja.');
-        setIsRegistering(false);
+        setIsCadastroLidering(false);
         return;
       }
 
-      // 3. Se não há cadastro pendente e o nome da igreja é único, cria um novo usuário
       const userCredential = await createUserWithEmailAndPassword(auth, email, senha);
       const user = userCredential.user;
-      console.log('Usuário criado no Authentication:', user.uid);
+      const liderUserId = user.uid;
 
-      await setDoc(doc(db, 'lideres', user.uid), {
+      console.log('Usuário (Líder) criado no Authentication:', liderUserId);
+
+      const batch = writeBatch(db);
+
+      const novaIgrejaDocRef = doc(collection(db, 'igrejas'));
+      const igrejaId = novaIgrejaDocRef.id;
+
+      const liderUsuarioDocRef = doc(db, 'igrejas', igrejaId, 'usuarios', liderUserId);
+
+      batch.set(novaIgrejaDocRef, {
+        nomeIgreja: nomeIgreja,
+        liderPrincipalId: liderUserId,
+        modoProAtivo: false,
+        cadastradoEm: new Date(),
+      });
+
+      batch.set(liderUsuarioDocRef, {
+        foto: '',
         nome: nome,
         sobrenome: sobrenome,
         email: email,
         telefone: telefone,
         area: musicoArea,
-        nomeIgreja: nomeIgreja,
+        isMinisterForCults: true,
         isLider: true,
-        aprovado: false, // Inicia como falso
-        modoProAtivo: false, // Inicia como falso
+        aprovado: true,
+        igrejaId: igrejaId,
         cadastradoEm: new Date(),
       });
 
-      console.log('Documento de líder criado no Firestore para:', user.uid);
+      await batch.commit();
+
+      console.log('Documento da Igreja e do Líder criados no Firestore. Igreja ID:', igrejaId);
 
       setSucesso('Cadastro realizado com sucesso! Agora finalize o pagamento para ativar sua conta.');
 
@@ -127,7 +144,7 @@ export default function Cadastro({ navigation }) {
         [
           {
             text: 'OK',
-            onPress: () => navigation.replace('Pagamento', { userId: user.uid })
+            onPress: () => navigation.replace('Pagamento', { userId: liderUserId, igrejaId: igrejaId })
           },
         ],
         { cancelable: false }
@@ -136,10 +153,6 @@ export default function Cadastro({ navigation }) {
     } catch (error) {
       console.error('Erro ao cadastrar:', error.code, error.message);
       if (error.code === 'auth/email-already-in-use') {
-        // Se o e-mail já está em uso NO FIREBASE AUTH (não no Firestore)
-        // Isso significa que a conta Auth existe, mas pode não ter um doc no Firestore
-        // ou o doc já está aprovado.
-        // Você pode tentar fazer login para verificar o status ou apenas informar.
         setErro('Este e-mail já está em uso. Por favor, tente fazer login ou use outro e-mail.');
       } else if (error.code === 'auth/invalid-email') {
         setErro('O endereço de e-mail é inválido.');
@@ -149,7 +162,7 @@ export default function Cadastro({ navigation }) {
         setErro(`Erro ao cadastrar: ${error.message}`);
       }
     } finally {
-      setIsRegistering(false);
+      setIsCadastroLidering(false);
     }
   };
 
@@ -273,8 +286,8 @@ export default function Cadastro({ navigation }) {
           {sucesso ? <Text style={styles.successMessage}>{sucesso}</Text> : null}
         </View>
 
-        <TouchableOpacity style={styles.button} onPress={cadastrar} disabled={isRegistering}>
-          {isRegistering ? (
+        <TouchableOpacity style={styles.button} onPress={cadastrar} disabled={isCadastroLidering}>
+          {isCadastroLidering ? (
             <ActivityIndicator color="white" size="small" />
           ) : (
             <>

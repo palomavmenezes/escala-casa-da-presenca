@@ -15,12 +15,23 @@ import {
 import { WebView } from 'react-native-webview';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { db, auth } from '../../services/firebase';
-import { collection, addDoc, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
+import {
+  collection,
+  getDocs,
+  query,
+  where,
+  doc,
+  getDoc,
+  updateDoc, // Import updateDoc for editing
+  deleteDoc, // Import deleteDoc for deleting
+} from 'firebase/firestore';
 import BottomTab from '../../components/BottomTab';
+import { Ionicons } from '@expo/vector-icons'; // Import Ionicons for icons on buttons
 
-export default function AdicionarMusicasScreen() {
+export default function EditarMusicaScreen() {
   const navigation = useNavigation();
   const route = useRoute();
+  const { musica } = route.params; // Get the music object to be edited
 
   const [nome, setNome] = useState('');
   const [cantorOriginal, setCantorOriginal] = useState('');
@@ -28,53 +39,53 @@ export default function AdicionarMusicasScreen() {
   const [cifraConteudo, setCifraConteudo] = useState('');
   const [video, setVideo] = useState('');
   const [tom, setTom] = useState('');
-  const [cantores, setCantores] = useState([]);
-  const [usuariosIgrejaDisponiveis, setUsuariosIgrejaDisponiveis] = useState([]);
+  const [cantores, setCantores] = useState([]); // IDs of selected singers for the song
+  const [usuariosIgrejaDisponiveis, setUsuariosIgrejaDisponiveis] = useState([]); // All active users in the church
   const [modalUsuariosVisible, setModalUsuariosVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  const [userChurchId, setUserChurchId] = useState(null);
+  const [userChurchId, setUserChurchId] = useState(null); // ID of the user's church
   const [telaErro, setTelaErro] = useState('');
 
-  // NEW: State for singer search query and filtered singers
+  // State for singer search query and filtered singers
   const [cantorSearchQuery, setCantorSearchQuery] = useState('');
   const [filteredCantores, setFilteredCantores] = useState([]);
 
   useEffect(() => {
-    const fetchUserAndChurchData = async () => {
+    const fetchMusicAndChurchData = async () => {
       setIsLoading(true);
       setTelaErro('');
 
       const currentUser = auth.currentUser;
       if (!currentUser) {
-        setTelaErro('Usuário não autenticado. Faça login para continuar.');
+        setTelaErro('Usuário não autenticado. Faça login para editar músicas.');
+        setIsLoading(false);
+        navigation.navigate('Login'); // Redirect to login
+        return;
+      }
+
+      // Check if 'musica' object and its essential IDs are available
+      if (!musica || !musica.id || !musica.igrejaId) {
+        setTelaErro('Dados da música para edição estão incompletos ou ausentes.');
         setIsLoading(false);
         return;
       }
 
+      // Populate initial state from the passed 'musica' object
+      setNome(musica.nome || '');
+      setCantorOriginal(musica.cantorOriginal || '');
+      setCifra(musica.cifra || '');
+      setCifraConteudo(musica.cifraConteudo || ''); // Populate new field
+      setVideo(musica.video || '');
+      setTom(musica.tom || '');
+      setCantores(musica.cantores || []); // Populate selected cantores (array of IDs)
+
       try {
-        let foundIgrejaId = null;
-        const igrejasSnapshot = await getDocs(collection(db, 'igrejas'));
+        const igrejaId = musica.igrejaId; // Use the igrejaId from the music object
+        setUserChurchId(igrejaId);
 
-        for (const docIgreja of igrejasSnapshot.docs) {
-          const usuarioDocRef = doc(db, 'igrejas', docIgreja.id, 'usuarios', currentUser.uid);
-          const usuarioDocSnap = await getDoc(usuarioDocRef);
-
-          if (usuarioDocSnap.exists()) {
-            foundIgrejaId = docIgreja.id;
-            break;
-          }
-        }
-
-        if (!foundIgrejaId) {
-          setTelaErro('Não foi possível encontrar a igreja associada ao seu usuário.');
-          setIsLoading(false);
-          return;
-        }
-
-        setUserChurchId(foundIgrejaId);
-
-        const usuariosRef = collection(db, 'igrejas', foundIgrejaId, 'usuarios');
+        // Fetch ALL approved users for the current church (no role-specific filter here)
+        const usuariosRef = collection(db, 'igrejas', igrejaId, 'usuarios');
         const q = query(usuariosRef, where('aprovado', '==', true));
         const snapshot = await getDocs(q);
 
@@ -86,17 +97,17 @@ export default function AdicionarMusicasScreen() {
         setUsuariosIgrejaDisponiveis(usuariosAtivos);
         setFilteredCantores(usuariosAtivos); // Initialize filtered list
       } catch (err) {
-        console.error('Erro ao buscar dados de usuário e igreja:', err);
-        setTelaErro('Erro ao carregar dados da sua igreja. Tente novamente.');
+        console.error('Erro ao buscar dados para edição da música:', err);
+        setTelaErro('Não foi possível carregar os dados para edição. Tente novamente.');
       } finally {
         setIsLoading(false);
       }
     };
 
-    fetchUserAndChurchData();
-  }, []);
+    fetchMusicAndChurchData();
+  }, [musica, navigation]); // Re-run effect if 'musica' object changes or navigation occurs
 
-  // NEW: Effect to filter singers when search query or available singers change
+  // Effect to filter singers when search query or available singers change
   useEffect(() => {
     if (cantorSearchQuery) {
       const lowerCaseQuery = cantorSearchQuery.toLowerCase();
@@ -121,7 +132,18 @@ export default function AdicionarMusicasScreen() {
     return usuariosIgrejaDisponiveis.find(u => u.id === id);
   };
 
-  const salvarMusica = async () => {
+  const getMinistroIniciaisById = (id) => {
+    const ministro = usuariosIgrejaDisponiveis.find(m => m.id === id);
+    if (!ministro || !ministro.nome) return '';
+    const nomeCompleto = `${ministro.nome} ${ministro.sobrenome || ''}`.trim();
+    return nomeCompleto
+      .split(' ')
+      .slice(0, 2)
+      .map(p => p[0].toUpperCase())
+      .join('');
+  };
+
+  const salvarEdicaoMusica = async () => {
     if (!nome.trim() || (!cifra.trim() && !cifraConteudo.trim())) {
       Alert.alert('Erro', 'Preencha ao menos o nome da música e o link ou conteúdo da cifra.');
       return;
@@ -131,47 +153,77 @@ export default function AdicionarMusicasScreen() {
       Alert.alert('Erro', 'ID da igreja não disponível. Não foi possível salvar a música. Por favor, reinicie o aplicativo.');
       return;
     }
+    if (!musica || !musica.id) {
+      Alert.alert('Erro', 'ID da música não encontrado para atualização.');
+      return;
+    }
 
     try {
       const currentUser = auth.currentUser;
       if (!currentUser) {
-        Alert.alert('Erro', 'Você precisa estar logado para cadastrar uma música.');
+        Alert.alert('Erro', 'Você precisa estar logado para editar uma música.');
         return;
       }
 
-      await addDoc(collection(db, 'igrejas', userChurchId, 'musicas'), {
+      // Reference to the specific music document to be updated
+      const musicaRef = doc(db, 'igrejas', userChurchId, 'musicas', musica.id);
+
+      await updateDoc(musicaRef, {
         nome: nome.trim(),
         cantorOriginal: cantorOriginal.trim(),
         cifra: cifra.trim(),
-        cifraConteudo: cifraConteudo.trim(),
+        cifraConteudo: cifraConteudo.trim(), // Include new field
         video: video.trim(),
         tom: tom.trim(),
         cantores: cantores,
-        criadoEm: new Date(),
-        criadoPor: currentUser.uid,
-        igrejaId: userChurchId
+        ultimaEdicaoEm: new Date(), // Add a timestamp for last edit
+        editadoPor: currentUser.uid, // Track who edited it
+        // igrejaId and criadoPor should not change on update, they remain from original document
       });
 
-      Alert.alert('Sucesso', 'Música cadastrada com sucesso!');
-      setNome('');
-      setCantorOriginal('');
-      setCifra('');
-      setCifraConteudo('');
-      setVideo('');
-      setTom('');
-      setCantores([]);
-      navigation.goBack?.();
+      Alert.alert('Sucesso', 'Música atualizada com sucesso!');
+      navigation.goBack?.(); // Go back after successful update
     } catch (e) {
-      console.error('Erro ao salvar música:', e);
-      Alert.alert('Erro', `Não foi possível salvar a música. ${e.message}. Verifique suas permissões.`);
+      console.error('Erro ao salvar edição da música:', e);
+      Alert.alert('Erro', `Não foi possível atualizar a música. ${e.message}. Verifique suas permissões.`);
     }
+  };
+
+  const deletarMusica = () => {
+    Alert.alert(
+      'Confirmar Exclusão',
+      'Tem certeza que deseja DELETAR esta música? Esta ação é irreversível.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Deletar',
+          style: 'destructive',
+          onPress: async () => {
+            if (!userChurchId || !musica || !musica.id) {
+              Alert.alert('Erro', 'Não foi possível deletar a música. Dados incompletos.');
+              return;
+            }
+            try {
+              const musicaRef = doc(db, 'igrejas', userChurchId, 'musicas', musica.id);
+              await deleteDoc(musicaRef);
+              Alert.alert('Sucesso', 'Música deletada com sucesso!');
+              navigation.goBack?.(); // Go back after deletion
+            } catch (e) {
+              console.error('Erro ao deletar música:', e);
+              Alert.alert('Erro', 'Não foi possível deletar a música. Tente novamente.');
+            }
+          },
+        },
+      ],
+      { cancelable: true }
+    );
   };
 
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#003D29" />
-        <Text style={styles.loadingText}>Carregando usuários...</Text>
+        <Text style={styles.loadingText}>Carregando dados da música...</Text>
       </View>
     );
   }
@@ -190,7 +242,7 @@ export default function AdicionarMusicasScreen() {
   return (
     <>
       <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.header}>Cadastrar Louvor</Text>
+        <Text style={styles.header}>Editar Louvor</Text>
 
         <TextInput
           style={styles.input}
@@ -251,11 +303,7 @@ export default function AdicionarMusicasScreen() {
                 ) : (
                   <View style={[styles.avatar, styles.avatarSemFoto]}>
                     <Text style={styles.avatarIniciais}>
-                      {cantor.nome
-                        .split(' ')
-                        .slice(0, 2)
-                        .map(p => p[0].toUpperCase())
-                        .join('')}
+                      {getMinistroIniciaisById(id)}
                     </Text>
                   </View>
                 )}
@@ -273,9 +321,18 @@ export default function AdicionarMusicasScreen() {
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity style={styles.button} onPress={salvarMusica}>
-          <Text style={styles.buttonText}>CADASTRAR LOUVOR</Text>
-        </TouchableOpacity>
+        {/* Botões de Edição e Exclusão - Lado a Lado */}
+        <View style={styles.actionButtonsContainer}>
+          <TouchableOpacity style={[styles.actionButton, styles.editButton]} onPress={salvarEdicaoMusica}>
+            <Ionicons name="save-outline" size={20} color="#fff" style={styles.actionButtonIcon} />
+            <Text style={styles.actionButtonText}>Salvar</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={[styles.actionButton, styles.deleteButton]} onPress={deletarMusica}>
+            <Ionicons name="trash-outline" size={20} color="#fff" style={styles.actionButtonIcon} />
+            <Text style={styles.actionButtonText}>Excluir</Text>
+          </TouchableOpacity>
+        </View>
 
         <Modal
           visible={modalUsuariosVisible}
@@ -289,7 +346,6 @@ export default function AdicionarMusicasScreen() {
           <View style={styles.modalContainer}>
             <View style={styles.modalContent}>
               <Text style={styles.modalTitle}>Adicionar Músicos</Text>
-              {/* NEW: Search input in the modal */}
               <TextInput
                 style={styles.input}
                 placeholder="Buscar por nome ou área..."
@@ -297,10 +353,10 @@ export default function AdicionarMusicasScreen() {
                 onChangeText={setCantorSearchQuery}
               />
               <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
-                {filteredCantores.length === 0 ? ( // Use filteredCantores
+                {filteredCantores.length === 0 ? (
                   <Text style={styles.noResultsText}>Nenhum usuário ativo encontrado.</Text>
                 ) : (
-                  filteredCantores // Use filteredCantores
+                  filteredCantores
                     .map(m => (
                       <TouchableOpacity
                         key={m.id}
@@ -318,11 +374,7 @@ export default function AdicionarMusicasScreen() {
                         ) : (
                           <View style={[styles.avatar, styles.avatarSemFoto]}>
                             <Text style={styles.avatarIniciais}>
-                              {m.nome
-                                .split(' ')
-                                .slice(0, 2)
-                                .map(p => p[0].toUpperCase())
-                                .join('')}
+                              {getMinistroIniciaisById(m.id)}
                             </Text>
                           </View>
                         )}
@@ -540,5 +592,36 @@ const styles = StyleSheet.create({
     marginTop: 20,
     fontSize: 16,
     color: '#888',
+  },
+  // NEW: Styles for action buttons (Edit/Delete)
+  actionButtonsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: 30,
+    marginBottom: 20,
+    gap: 10, // Space between buttons
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 15,
+    borderRadius: 10,
+    flex: 1, // Take equal space
+  },
+  actionButtonIcon: {
+    marginRight: 8,
+  },
+  actionButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  editButton: {
+    backgroundColor: '#2e78b7', // Blue color for edit (save in this context)
+  },
+  deleteButton: {
+    backgroundColor: '#dc3545', // Red color for delete
   },
 });
