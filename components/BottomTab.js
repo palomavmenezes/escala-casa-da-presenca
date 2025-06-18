@@ -1,10 +1,10 @@
-// components/BottomTab.tsx
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { FontAwesome5, MaterialIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 
-export default function BottomTab() {
+// O BottomTab agora recebe isLider e isMinisterForCults como props
+export default function BottomTab({ isLider, isMinisterForCults }) {
   const navigation = useNavigation();
   const route = useRoute();
 
@@ -12,6 +12,9 @@ export default function BottomTab() {
   const inactiveColor = '#c1c1c1';
 
   const isActive = (screenName) => route.name === screenName;
+
+  // Lógica de permissão: Apenas isLider = true OU isMinisterForCults = true
+  const canManageScales = isLider === true || isMinisterForCults === true;
 
   return (
     <View style={styles.container}>
@@ -27,23 +30,26 @@ export default function BottomTab() {
         <Text style={[styles.label, isActive('Ministers') && styles.activeLabel]}>Ministros</Text>
       </TouchableOpacity>
 
-      {/* Botão central */}
-      <View style={styles.centerTabItem}>
-        <TouchableOpacity
-          style={styles.fabButton}
-          onPress={() => navigation.navigate('CriarEscalas')}
-        >
-          <FontAwesome5 name="plus" size={20} color="#fff" />
-        </TouchableOpacity>
-      </View>
-
+      {/* Botão central (Criar Escalas) - Visível apenas para usuários autorizados */}
+      {canManageScales && (
+        <View style={styles.centerTabItem}>
+          <TouchableOpacity
+            style={styles.fabButton}
+            onPress={() => navigation.navigate('CriarEscalas')}
+          >
+            <FontAwesome5 name="plus" size={20} color="#fff" />
+          </TouchableOpacity>
+        </View>
+      )}
+      
       {/* Louvores */}
       <TouchableOpacity style={styles.tabItem} onPress={() => navigation.navigate('Musicas')}>
         <FontAwesome5 name="music" size={20} color={isActive('Musicas') ? activeColor : inactiveColor} />
         <Text style={[styles.label, isActive('Musicas') && styles.activeLabel]}>Louvores</Text>
       </TouchableOpacity>
 
-      {/* Escalas */}
+      {/* Escalas - Visível apenas para usuários autorizados */}
+     
       <TouchableOpacity style={styles.tabItem} onPress={() => navigation.navigate('Escalas')}>
         <MaterialIcons name="edit" size={20} color={isActive('Escalas') ? activeColor : inactiveColor} />
         <Text style={[styles.label, isActive('Escalas') && styles.activeLabel]}>Escalas</Text>
@@ -70,7 +76,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   centerTabItem: {
-    flex: 1,
+    flex: 1, // Pode precisar de flex:1 para manter o espaçamento mesmo que invisível
     alignItems: 'center',
     justifyContent: 'flex-start',
     top: -30,

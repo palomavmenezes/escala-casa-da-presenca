@@ -2,38 +2,44 @@ import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
-  StyleSheet,
   ScrollView,
   Image,
   TouchableOpacity,
   Linking,
-  ActivityIndicator, // Added for loading state
-  Alert,             // Added for error alerts
+  ActivityIndicator,
+  Alert,
+  Platform,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { doc, getDoc, collection, getDocs, query, where } from 'firebase/firestore'; // Added query, where
-import { WebView } from 'react-native-webview';
-import { Ionicons } from '@expo/vector-icons';
-import { db } from '../../services/firebase'; // Ensure 'auth' is not imported if not used
+import { doc, getDoc, collection, getDocs, query, where } from 'firebase/firestore';
 import BottomTab from '../../components/BottomTab';
+import styles from './EscalaDetalhes.styles';
+import { db, auth } from '../../services/firebase'; // Import auth to check user permissions
+import { Ionicons } from '@expo/vector-icons'; // Import Ionicons for icons on buttons
+
+// Importa WebView apenas para plataformas nativas
+let WebView;
+if (Platform.OS !== 'web') {
+  WebView = require('react-native-webview').WebView;
+}
 
 export default function EscalaDetalhes() {
   const route = useRoute();
   const navigation = useNavigation();
-  const { escala } = route.params; // escala object should now contain igrejaId
+  const { escala } = route.params;
 
-  const [ministrosDetalhes, setMinistrosDetalhes] = useState([]); // Stores full details of all users in the church
-  const [escaladosComDetalhes, setEscaladosComDetalhes] = useState([]); // Stores full details of only the *escaled* users
+  const [ministrosDetalhes, setMinistrosDetalhes] = useState([]);
+  const [escaladosComDetalhes, setEscaladosComDetalhes] = useState([]);
   const [ministroResponsavelDetalhes, setMinistroResponsavelDetalhes] = useState(null);
   const [loading, setLoading] = useState(true);
   const [telaErro, setTelaErro] = useState('');
+  const [isUserAuthorizedToEdit, setIsUserAuthorizedToEdit] = useState(false); // Novo estado para autorização
 
   useEffect(() => {
     const carregarDetalhes = async () => {
       setLoading(true);
       setTelaErro('');
 
-      // Ensure that 'escala' and 'escala.igrejaId' are available
       if (!escala || !escala.id || !escala.igrejaId) {
         setTelaErro('Dados da escala ou ID da igreja ausentes.');
         setLoading(false);
@@ -43,29 +49,54 @@ export default function EscalaDetalhes() {
       try {
         const igrejaId = escala.igrejaId;
 
-        // 1. Fetch ALL users (ministros) for the current church
-        // This is efficient because it's a single query to get all potential members
+        const currentUser = auth.currentUser;
+        if (currentUser) {
+          const userProfileRef = doc(db, 'igrejas', igrejaId, 'usuarios', currentUser.uid);
+          const userProfileSnap = await getDoc(userProfileRef);
+
+          let userIsLider = false;
+          let userIsMinisterForCults = false;
+
+          if (userProfileSnap.exists()) {
+            const userProfileData = userProfileSnap.data();
+            userIsLider = userProfileData.isLider === true;
+            userIsMinisterForCults = userProfileData.isMinisterForCults === true;
+          }
+
+          const igrejaDocRef = doc(db, 'igrejas', igrejaId);
+          const igrejaDocSnap = await getDoc(igrejaDocRef);
+          let isLiderPrincipal = false;
+          if (igrejaDocSnap.exists()) {
+            const igrejaData = igrejaDocSnap.data();
+            isLiderPrincipal = igrejaData.liderPrincipalId === currentUser.uid;
+          }
+
+          // Lógica de autorização baseada nas regras do Firebase
+          if (isLiderPrincipal || userIsMinisterForCults) {
+            setIsUserAuthorizedToEdit(true);
+          } else {
+            setIsUserAuthorizedToEdit(false);
+          }
+        } else {
+          setIsUserAuthorizedToEdit(false); // Não autenticado, sem permissão
+        }
+
+
         const usuariosRef = collection(db, 'igrejas', igrejaId, 'usuarios');
         const usuariosSnap = await getDocs(usuariosRef);
         const todosUsuariosDaIgreja = usuariosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setMinistrosDetalhes(todosUsuariosDaIgreja); // Store all users for future lookups
+        setMinistrosDetalhes(todosUsuariosDaIgreja);
 
-        // 2. Identify the responsible minister (criadoPor)
         const responsavel = todosUsuariosDaIgreja.find(m => m.id === escala.criadoPor);
         if (responsavel) {
           setMinistroResponsavelDetalhes(responsavel);
-        } else {
-          console.warn('Ministro responsável não encontrado para ID:', escala.criadoPor);
-          // You might want to display a fallback name or omit this section
         }
 
-        // 3. Get full details for the 'usuariosEscalados'
         const escaladosIds = escala.usuariosEscalados || [];
         const filteredEscalados = todosUsuariosDaIgreja.filter(m => escaladosIds.includes(m.id));
         setEscaladosComDetalhes(filteredEscalados);
 
       } catch (error) {
-        console.error('Erro ao carregar detalhes da escala:', error);
         setTelaErro('Erro ao carregar os detalhes da escala. Tente novamente mais tarde.');
       } finally {
         setLoading(false);
@@ -73,9 +104,8 @@ export default function EscalaDetalhes() {
     };
 
     carregarDetalhes();
-  }, [escala]); // Re-run effect if 'escala' object changes (e.g., navigation updates it)
+  }, [escala]);
 
-  // Corrigido para incluir sobrenome nas iniciais
   const getIniciais = (nome = '', sobrenome = '') => {
     const nomes = nome.trim().split(' ');
     const primeiraLetra = nomes[0]?.[0]?.toUpperCase() || '';
@@ -84,11 +114,49 @@ export default function EscalaDetalhes() {
   };
 
   const getYouTubeEmbedUrl = url => {
-    // A more robust regex for YouTube video IDs
     const regExp = /(?:https?:\/\/)?(?:www\.)?(?:m\.)?(?:youtube\.com|youtu\.be)\/(?:watch\?v=|embed\/|v\/|)([\w-]{11})(?:\S+)?/i;
     const match = url.match(regExp);
-    return match ? `https://www.youtube.com/embed/${match[1]}?modestbranding=1&rel=0` : null; // Changed to https and added modestbranding/rel for better embed behavior
+    return match ? `https://www.youtube.com/embed/${match[1]}?modestbranding=1&rel=0` : null;
   };
+
+  const handleEditEscala = () => {
+    if (escala && escala.id && escala.igrejaId) {
+      navigation.navigate('EditarEscala', { escala: escala });
+    } else {
+      Alert.alert('Erro', 'Não foi possível carregar os dados necessários para editar a escala.');
+    }
+  };
+
+  const handleCancelEscala = () => {
+    Alert.alert(
+      'Descartar Escala',
+      'Tem certeza que deseja cancelar esta escala? Esta ação a removerá completamente.',
+      [
+        { text: 'Não', style: 'cancel' },
+        { 
+          text: 'Sim', 
+          style: 'destructive',
+          onPress: async () => {
+            if (!escala || !escala.id || !escala.igrejaId) {
+              Alert.alert('Erro', 'Não foi possível cancelar a escala. Dados incompletos.');
+              return;
+            }
+            try {
+              const escalaRef = doc(db, 'igrejas', escala.igrejaId, 'escalas', escala.id);
+              await deleteDoc(escalaRef);
+              Alert.alert('Sucesso', 'Escala cancelada com sucesso!');
+              navigation.goBack?.();
+            } catch (e) {
+              console.error('Erro ao cancelar escala:', e);
+              Alert.alert('Erro', `Não foi possível cancelar a escala. ${e.message}.`);
+            }
+          }
+        }
+      ],
+      { cancelable: true }
+    );
+  };
+
 
   if (loading) {
     return (
@@ -110,7 +178,6 @@ export default function EscalaDetalhes() {
     );
   }
 
-  // Format dataCulto for display
   const dataCultoFormatada = escala.dataCulto instanceof Date
     ? escala.dataCulto.toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
     : 'Data desconhecida';
@@ -121,7 +188,7 @@ export default function EscalaDetalhes() {
         {/* Ministro responsável */}
         {ministroResponsavelDetalhes && (
           <View style={styles.responsavelContainer}>
-            {ministroResponsavelDetalhes.foto ? ( // Usando 'foto'
+            {ministroResponsavelDetalhes.foto ? (
               <Image source={{ uri: ministroResponsavelDetalhes.foto }} style={styles.responsavelFoto} />
             ) : (
               <View style={[styles.responsavelFoto, styles.iniciaisBox]}>
@@ -144,7 +211,7 @@ export default function EscalaDetalhes() {
           {escaladosComDetalhes.length > 0 ? (
             escaladosComDetalhes.map(m => (
               <View key={m.id} style={styles.ministroItem}>
-                {m.foto ? ( // Usando 'foto'
+                {m.foto ? (
                   <Image source={{ uri: m.foto }} style={styles.fotoMinistro} />
                 ) : (
                   <View style={[styles.iniciaisBox, styles.fotoMinistro]}>
@@ -191,12 +258,12 @@ export default function EscalaDetalhes() {
                     <Text style={styles.vozesTitulo}>Na voz de:</Text>
                     <View style={styles.vozesFotos}>
                       {musica.cantores.map((cantorId) => {
-                        const ministro = ministrosDetalhes.find(m => m.id === cantorId); // Look up from all church users
+                        const ministro = ministrosDetalhes.find(m => m.id === cantorId);
                         if (!ministro) return null;
 
                         return (
                           <View key={cantorId} style={styles.vozItem}>
-                            {ministro.foto ? ( // Usando 'foto'
+                            {ministro.foto ? (
                               <Image source={{ uri: ministro.foto }} style={styles.vozFoto} />
                             ) : (
                               <View style={[styles.iniciaisBoxVoz, styles.iniciaisBox]}>
@@ -215,14 +282,25 @@ export default function EscalaDetalhes() {
 
                 {/* Vídeo */}
                 {embedUrl && (
-                  <View style={styles.videoContainer}>
-                    <WebView
-                      style={styles.webview}
-                      javaScriptEnabled
-                      domStorageEnabled
-                      source={{ uri: embedUrl }}
-                    />
-                  </View>
+                  Platform.OS === 'web' ? (
+                    <iframe
+                      title={`youtube-video-${musica.musicaId}`}
+                      style={styles.videoPlayerWeb} // Você precisará adicionar 'videoPlayerWeb' no seu EscalaDetalhes.styles
+                      src={embedUrl}
+                      allowFullScreen
+                      frameBorder="0"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    ></iframe>
+                  ) : (
+                    <View style={styles.videoContainer}>
+                      <WebView
+                        style={styles.webview}
+                        javaScriptEnabled={true}
+                        domStorageEnabled={true}
+                        source={{ uri: embedUrl }}
+                      />
+                    </View>
+                  )
                 )}
 
                 {/* Botão Cifra */}
@@ -240,248 +318,23 @@ export default function EscalaDetalhes() {
         ) : (
           <Text style={styles.emptyText}>Nenhum louvor cadastrado para esta escala.</Text>
         )}
+
+        {/* Botões de Ação: Editar e Cancelar */}
+        {isUserAuthorizedToEdit && (
+          <View style={styles.actionButtonsContainer}>
+            <TouchableOpacity style={[styles.actionButton, styles.editButton]} onPress={handleEditEscala}>
+              <Ionicons name="create-outline" size={20} color="#fff" style={styles.actionButtonIcon} />
+              <Text style={styles.actionButtonText}>Editar</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={[styles.actionButton, styles.deleteButton]} onPress={handleCancelEscala}>
+              <Ionicons name="close-circle-outline" size={20} color="#fff" style={styles.actionButtonIcon} />
+              <Text style={styles.actionButtonText}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </ScrollView>
       <BottomTab />
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    backgroundColor: '#fff',
-    padding: 20,
-    paddingBottom: 60,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#F5F6FA',
-  },
-  loadingText: {
-    marginTop: 10,
-    fontSize: 16,
-    color: '#003D29',
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-    backgroundColor: '#F5F6FA',
-  },
-  errorText: {
-    textAlign: 'center',
-    color: 'red',
-    fontSize: 16,
-    marginBottom: 20,
-  },
-  button: {
-    backgroundColor: '#6ACF9E',
-    paddingVertical: 14,
-    borderRadius: 10,
-    alignItems: 'center',
-    marginTop: 30,
-    marginBottom: 20,
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.23,
-    shadowRadius: 2.62,
-    width: '80%',
-  },
-  buttonText: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: 'bold',
-    letterSpacing: 1,
-  },
-  backIcon: {
-    color: '#1F2937',
-    marginBottom: 10,
-  },
-  responsavelContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F3F4F6',
-    borderRadius: 30,
-    padding: 10,
-    marginBottom: 20,
-  },
-  responsavelFoto: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    marginRight: 10,
-  },
-  responsavelTitulo: {
-    fontSize: 12,
-    color: '#6B7280',
-  },
-  responsavelNome: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  dataCulto: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#111827',
-    marginBottom: 10,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#111827',
-    marginTop: 15,
-    marginBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-    paddingBottom: 5,
-  },
-  ministrosGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 16,
-    justifyContent: 'flex-start', // Align items to the start
-  },
-  ministroItem: {
-    width: '28%', // Adjust width to fit 3 items per row with gap
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  fotoMinistro: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    borderWidth: 2,
-    borderColor: '#10B981',
-    marginBottom: 6,
-  },
-  iniciaisBox: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#ccc',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  iniciais: {
-    fontSize: 18,
-    color: '#fff',
-    fontWeight: 'bold',
-  },
-  nomeMinistro: {
-    fontWeight: '600',
-    fontSize: 13,
-    color: '#111827',
-    textAlign: 'center',
-  },
-  cargoMinistro: {
-    fontSize: 12,
-    color: '#6B7280',
-    textAlign: 'center',
-  },
-  ensaioBox: {
-    backgroundColor: '#A7F3D0',
-    padding: 12,
-    borderRadius: 10,
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  ensaioTexto: {
-    fontWeight: 'bold',
-    color: '#065F46',
-    fontSize: 16,
-  },
-  cardMusica: {
-    backgroundColor: '#F9FAFB',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 24,
-  },
-  headerMusica: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  nomeMusica: {
-    fontWeight: 'bold',
-    fontSize: 16,
-    color: '#111827',
-    flexShrink: 1, // Allow text to shrink
-  },
-  tomBox: {
-    backgroundColor: '#6EE7B7',
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    marginLeft: 10, // Add some margin to separate from name
-  },
-  tomTexto: {
-    fontWeight: 'bold',
-    color: '#065F46',
-    fontSize: 13,
-  },
-  videoContainer: {
-    height: 200,
-    borderRadius: 12,
-    overflow: 'hidden',
-    marginBottom: 10,
-  },
-  webview: {
-    flex: 1,
-  },
-  botaoCifra: {
-    backgroundColor: '#1F2937',
-    borderRadius: 8,
-    paddingVertical: 10,
-    alignItems: 'center',
-  },
-  textoCifra: {
-    color: '#fff',
-    fontWeight: '600',
-  },
-  vozesContainer: {
-    marginTop: 10,
-    marginBottom: 15, // Added margin for spacing
-  },
-  vozesTitulo: {
-    fontWeight: '600',
-    color: '#444',
-    marginBottom: 8,
-  },
-  vozesFotos: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12, // Use gap for spacing instead of marginRight
-  },
-  vozItem: {
-    alignItems: 'center',
-    // Removed marginRight as gap handles it
-  },
-  vozFoto: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    marginBottom: 4,
-  },
-  iniciaisBoxVoz: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#ccc',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  nomeVoz: {
-    fontSize: 12,
-    marginTop: 4,
-    // Removed fixed marginBottom: 30, it can push next elements down unnecessarily
-    textAlign: 'center',
-    color: '#374151',
-  }
-});

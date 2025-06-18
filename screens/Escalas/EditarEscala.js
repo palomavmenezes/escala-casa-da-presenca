@@ -3,7 +3,6 @@ import {
   View,
   Text,
   TextInput,
-  StyleSheet,
   ScrollView,
   TouchableOpacity,
   Alert,
@@ -11,27 +10,33 @@ import {
   Modal,
   Switch,
   Linking,
-  ActivityIndicator, // Adicionado para estado de carregamento
+  ActivityIndicator,
+  Platform,
 } from 'react-native';
-import { WebView } from 'react-native-webview';
 import { db, auth } from '../../services/firebase';
 import {
   collection,
   getDocs,
   doc,
-  getDoc,
+  updateDoc,
+  deleteDoc,
   query,
   where,
-  updateDoc, // Importado para atualizar documentos
-  deleteDoc, // Importado para deletar documentos
+  getDoc, // Import getDoc
 } from 'firebase/firestore';
+import styles from './EditarEscala.styles';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import BottomTab from '../../components/BottomTab';
-import { useRoute } from '@react-navigation/native'; // Importado para obter parâmetros de rota
+import { useRoute } from '@react-navigation/native';
 
-export default function EditarEscalas({ navigation }) {
+let WebView;
+if (Platform.OS !== 'web') {
+  WebView = require('react-native-webview').WebView;
+}
+
+export default function EditarEscala({ navigation }) {
   const route = useRoute();
-  const { escala } = route.params; // Obtém o objeto da escala a ser editada
+  const { escala } = route.params;
 
   const [dataCulto, setDataCulto] = useState('');
   const [marcarEnsaio, setMarcarEnsaio] = useState(false);
@@ -41,23 +46,22 @@ export default function EditarEscalas({ navigation }) {
   const [showDatePickerEnsaio, setShowDatePickerEnsaio] = useState(false);
   const [showTimePickerEnsaio, setShowTimePickerEnsaio] = useState(false);
 
-  const [ministros, setMinistros] = useState([]); // Todos os usuários/ministros da igreja
-  const [ministrosEscalados, setMinistrosEscalados] = useState([]); // IDs dos ministros selecionados para a escala
+  const [ministros, setMinistros] = useState([]);
+  const [ministrosEscalados, setMinistrosEscalados] = useState([]);
   const [modalMinistrosVisible, setModalMinistrosVisible] = useState(false);
 
-  const [musicasDisponiveis, setMusicasDisponiveis] = useState([]); // Todas as músicas da igreja
-  const [musicasSelecionadas, setMusicasSelecionadas] = useState([]); // Músicas selecionadas para a escala
+  const [musicasDisponiveis, setMusicasDisponiveis] = useState([]);
+  const [musicasSelecionadas, setMusicasSelecionadas] = useState([]);
   const [modalMusicasVisible, setModalMusicasVisible] = useState(false);
   const [musicaSearchQuery, setMusicaSearchQuery] = useState('');
   const [filteredMusicas, setFilteredMusicas] = useState([]);
   const [currentMusicIndexForSingers, setCurrentMusicIndexForSingers] = useState(null);
   const [modalCantoresMusicaVisible, setModalCantoresMusicaVisible] = useState(false);
 
-  const [userChurchId, setUserChurchId] = useState(null); // ID da igreja do usuário
-  const [loading, setLoading] = useState(true); // Estado de carregamento para busca de dados
-  const [telaErro, setTelaErro] = useState(''); // Estado para exibir erros
+  const [userChurchId, setUserChurchId] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [telaErro, setTelaErro] = useState('');
 
-  // Efeito para carregar os dados iniciais da escala e dados específicos da igreja (ministros, músicas)
   useEffect(() => {
     const carregarDadosDaEscalaEComuns = async () => {
       setLoading(true);
@@ -71,34 +75,50 @@ export default function EditarEscalas({ navigation }) {
         return;
       }
 
-      // Verifica se a escala e seus IDs essenciais estão presentes
       if (!escala || !escala.id || !escala.igrejaId) {
         setTelaErro('Dados da escala para edição estão incompletos ou ausentes.');
         setLoading(false);
         return;
       }
 
-      // Define os estados iniciais com os dados da escala passada
-      setDataCulto(escala.dataCulto || '');
-      setMarcarEnsaio(escala.ensaio || false);
-      setDataEnsaio(escala.dataEnsaio || '');
-      setHoraEnsaio(escala.horaEnsaio || '');
-      setMinistrosEscalados(escala.usuariosEscalados || []);
-      // Mapeia as músicas existentes para o formato de estado, garantindo que 'cantores' sejam IDs
-      setMusicasSelecionadas(escala.musicas?.map(m => ({
-        musicaId: m.musicaId,
-        musicaNome: m.musicaNome,
-        cifra: m.cifra,
-        video: m.video || '',
-        tom: m.tom || '', // Inclui 'tom' se estiver disponível no documento original da música
-        cantores: m.cantores || [], // Garante que cantores são IDs
-      })) || []);
-
       try {
-        const igrejaId = escala.igrejaId; // Usa o igrejaId da própria escala
+        const igrejaId = escala.igrejaId;
         setUserChurchId(igrejaId);
 
-        // Carrega todos os usuários (ministros) aprovados da igreja específica
+        // Verifica permissões
+        const escalaRef = doc(db, 'igrejas', igrejaId, 'escalas', escala.id);
+        const escalaSnap = await getDoc(escalaRef);
+        const escalaData = escalaSnap.data();
+
+        if (escalaData.criadoPor !== currentUser.uid) {
+          // Verifica se o usuário é líder
+          const userRef = doc(db, 'igrejas', igrejaId, 'usuarios', currentUser.uid);
+          const userSnap = await getDoc(userRef);
+          const userData = userSnap.data();
+
+          if (!userData?.isLider) {
+            setTelaErro('Você não tem permissão para editar esta escala.');
+            setLoading(false);
+            return;
+          }
+        }
+
+        setDataCulto(escala.dataCulto || '');
+        setMarcarEnsaio(escala.ensaio || false);
+        setDataEnsaio(escala.dataEnsaio || '');
+        setHoraEnsaio(escala.horaEnsaio || '');
+        // Garante que o criador esteja sempre na lista
+        setMinistrosEscalados(escala.usuariosEscalados && escala.usuariosEscalados.length > 0 ? escala.usuariosEscalados : [currentUser.uid]);
+
+        setMusicasSelecionadas(escala.musicas?.map(m => ({
+          musicaId: m.musicaId,
+          musicaNome: m.musicaNome,
+          cifra: m.cifra,
+          video: m.video || '',
+          tom: m.tom || '',
+          cantores: m.cantores || [],
+        })) || []);
+
         const ministrosQuery = query(
           collection(db, 'igrejas', igrejaId, 'usuarios'),
           where('aprovado', '==', true)
@@ -107,12 +127,11 @@ export default function EditarEscalas({ navigation }) {
         const listaMinistros = ministrosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         setMinistros(listaMinistros);
 
-        // Carrega todas as músicas da igreja específica
         const musicasQuery = collection(db, 'igrejas', igrejaId, 'musicas');
         const musicasSnap = await getDocs(musicasQuery);
         const listaMusicas = musicasSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         setMusicasDisponiveis(listaMusicas);
-        setFilteredMusicas(listaMusicas); // Inicializa a lista filtrada
+        setFilteredMusicas(listaMusicas);
       } catch (error) {
         console.error('Erro ao buscar dados para edição da escala:', error);
         setTelaErro('Não foi possível carregar os dados para edição. Tente novamente.');
@@ -122,9 +141,8 @@ export default function EditarEscalas({ navigation }) {
     };
 
     carregarDadosDaEscalaEComuns();
-  }, [escala, navigation]); // Adiciona 'escala' e 'navigation' como dependências
+  }, [escala, navigation]);
 
-  // Efeito para filtrar músicas quando a busca ou a lista de músicas disponíveis muda
   useEffect(() => {
     if (musicaSearchQuery) {
       const lowerCaseQuery = musicaSearchQuery.toLowerCase();
@@ -137,31 +155,25 @@ export default function EditarEscalas({ navigation }) {
     }
   }, [musicaSearchQuery, musicasDisponiveis]);
 
-  // --- Funções para Seleção de Data e Hora (Mantidas do CriarEscalas) ---
-  const onChangeCultoDate = (event, selectedDate) => {
-    const currentDate = selectedDate || new Date();
-    setShowDatePickerCulto(false);
-    setDataCulto(currentDate.toISOString().split('T')[0]);
+  // Função para lidar com a mudança de data/hora (ajustada para mobile/web)
+  const handleDateChange = (setter, showSetter) => (event, selectedValue) => {
+    showSetter(false); // Fecha o picker no mobile
+    if (selectedValue) {
+      setter(selectedValue.toISOString().split('T')[0]);
+    }
   };
 
-  const onChangeEnsaioDate = (event, selectedDate) => {
-    const currentDate = selectedDate || new Date();
-    setShowDatePickerEnsaio(false);
-    setDataEnsaio(currentDate.toISOString().split('T')[0]);
+  const handleTimeChange = (setter, showSetter) => (event, selectedValue) => {
+    showSetter(false); // Fecha o picker no mobile
+    if (selectedValue) {
+      setter(selectedValue.toTimeString().split(' ')[0].substring(0, 5));
+    }
   };
 
-  const onChangeEnsaioTime = (event, selectedTime) => {
-    const currentTime = selectedTime || new Date();
-    setShowTimePickerEnsaio(false);
-    setHoraEnsaio(currentTime.toTimeString().split(' ')[0].substring(0, 5));
-  };
-
-  // --- Funções para Ministros (Mantidas) ---
   const toggleMinistroEscalado = (id) => {
     setMinistrosEscalados(prev => {
       const isCurrentlyEscalado = prev.includes(id);
       if (isCurrentlyEscalado) {
-        // Se o ministro for removido da escala geral, remove também de todas as músicas
         setMusicasSelecionadas(prevMusicas => {
           return prevMusicas.map(musica => ({
             ...musica,
@@ -180,7 +192,6 @@ export default function EditarEscalas({ navigation }) {
     return ministro ? ministro.nome : 'Ministro Desconhecido';
   };
 
-  // Usando 'foto' como o campo para a URL da foto, com base na sua estrutura de dados
   const getMinistroFotoById = (id) => {
     const ministro = ministros.find(m => m.id === id);
     return ministro ? ministro.foto : null;
@@ -189,7 +200,6 @@ export default function EditarEscalas({ navigation }) {
   const getMinistroIniciaisById = (id) => {
     const ministro = ministros.find(m => m.id === id);
     if (!ministro || !ministro.nome) return '';
-    // Corrigido para usar nome e sobrenome, se disponíveis, para iniciais
     const nomeCompleto = `${ministro.nome} ${ministro.sobrenome || ''}`.trim();
     return nomeCompleto
       .split(' ')
@@ -198,7 +208,6 @@ export default function EditarEscalas({ navigation }) {
       .join('');
   };
 
-  // --- Funções para Músicas (Mantidas) ---
   const handleAdicionarMusicas = (musicaId) => {
     const musicaJaAdicionada = musicasSelecionadas.some(m => m.musicaId === musicaId);
     if (musicaJaAdicionada) {
@@ -215,7 +224,7 @@ export default function EditarEscalas({ navigation }) {
           musicaNome: musica.nome,
           cifra: musica.cifra,
           video: musica.video || '',
-          tom: musica.tom || '', // Inclui tom se disponível no documento da música
+          tom: musica.tom || '',
           cantores: [],
         },
       ]);
@@ -230,7 +239,8 @@ export default function EditarEscalas({ navigation }) {
       'Tem certeza que deseja remover esta música da escala?',
       [
         { text: 'Cancelar', style: 'cancel' },
-        { text: 'Remover', onPress: () => {
+        {
+          text: 'Remover', onPress: () => {
             setMusicasSelecionadas(prev => prev.filter((_, i) => i !== index));
           },
         },
@@ -249,13 +259,11 @@ export default function EditarEscalas({ navigation }) {
     setMusicasSelecionadas(newMusicas);
   };
 
-  // Função mais robusta para extrair o ID do vídeo do YouTube e montar a URL de embed
   const getYouTubeEmbedUrl = (url) => {
     if (!url) return null;
     const regExp = /(?:https?:\/\/)?(?:www\.)?(?:m\.)?(?:youtube\.com|youtu\.be)\/(?:watch\?v=|embed\/|v\/|)([\w-]{11})(?:\S+)?/i;
     const match = url.match(regExp);
     if (match && match[1]) {
-      // Adiciona parâmetros para um player mais limpo (sem logo YouTube, sem vídeos relacionados)
       return `https://www.youtube.com/embed/${match[1]}?modestbranding=1&rel=0`;
     }
     return null;
@@ -297,7 +305,6 @@ export default function EditarEscalas({ navigation }) {
     });
   };
 
-  // --- Função para Salvar Edições na Escala (Update) ---
   const salvarEdicaoEscala = async () => {
     if (!dataCulto) {
       Alert.alert('Erro', 'Por favor, selecione a data do culto.');
@@ -331,8 +338,10 @@ export default function EditarEscalas({ navigation }) {
         return;
       }
 
-      // Referência ao documento da escala a ser atualizada
       const escalaRef = doc(db, 'igrejas', userChurchId, 'escalas', escala.id);
+
+      // Garante que o ID do usuário atual esteja sempre presente
+      const usuariosParaSalvar = [...new Set([...ministrosEscalados, currentUser.uid])];
 
       await updateDoc(escalaRef, {
         dataCulto: dataCulto,
@@ -345,29 +354,29 @@ export default function EditarEscalas({ navigation }) {
           musicaId: m.musicaId,
           musicaNome: m.musicaNome,
           video: m.video,
-          tom: m.tom || '', // Garante que 'tom' é incluído se disponível na música da escala
+          tom: m.tom || '',
         })),
-        usuariosEscalados: ministrosEscalados,
-        ultimaEdicaoEm: new Date(), // Adiciona um timestamp da última edição
-        editadoPor: currentUser.uid, // Registra quem editou
+        usuariosEscalados: usuariosParaSalvar,
+        ultimaEdicaoEm: new Date(),
+        editadoPor: currentUser.uid,
       });
 
       Alert.alert('Sucesso', 'Escala atualizada com sucesso!');
-      navigation.goBack?.(); // Volta para a tela anterior após atualização bem-sucedida
+      navigation.goBack?.();
     } catch (e) {
       console.error('Erro ao salvar edição da escala:', e);
       Alert.alert('Erro', 'Não foi possível atualizar a escala. Tente novamente.');
     }
   };
 
-  // --- Função para Deletar Escala ---
   const deletarEscala = () => {
     Alert.alert(
       'Confirmar Exclusão',
       'Tem certeza que deseja DELETAR esta escala? Esta ação é irreversível.',
       [
         { text: 'Cancelar', style: 'cancel' },
-        { text: 'Deletar', style: 'destructive', onPress: async () => {
+        {
+          text: 'Deletar', style: 'destructive', onPress: async () => {
             if (!userChurchId || !escala || !escala.id) {
               Alert.alert('Erro', 'Não foi possível deletar a escala. Dados incompletos.');
               return;
@@ -376,7 +385,7 @@ export default function EditarEscalas({ navigation }) {
               const escalaRef = doc(db, 'igrejas', userChurchId, 'escalas', escala.id);
               await deleteDoc(escalaRef);
               Alert.alert('Sucesso', 'Escala deletada com sucesso!');
-              navigation.goBack?.(); // Volta para a tela anterior após a exclusão
+              navigation.goBack?.();
             } catch (e) {
               console.error('Erro ao deletar escala:', e);
               Alert.alert('Erro', 'Não foi possível deletar a escala. Tente novamente.');
@@ -388,7 +397,6 @@ export default function EditarEscalas({ navigation }) {
     );
   };
 
-  // Renderiza estado de carregamento
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -398,7 +406,6 @@ export default function EditarEscalas({ navigation }) {
     );
   }
 
-  // Renderiza estado de erro
   if (telaErro) {
     return (
       <View style={styles.errorContainer}>
@@ -416,22 +423,28 @@ export default function EditarEscalas({ navigation }) {
         <Text style={styles.header}>Editar Escala</Text>
 
         {/* Input de Data do Culto */}
-        <TouchableOpacity onPress={() => setShowDatePickerCulto(true)}>
+        <TouchableOpacity
+          onPress={() => setShowDatePickerCulto(true)}
+          style={Platform.OS === 'web' ? null : { width: '100%' }}
+        >
           <TextInput
             style={styles.input}
             placeholder="Data do culto: AAAA-MM-DD"
             value={dataCulto}
-            editable={false}
+            editable={Platform.OS === 'web'}
+            pointerEvents={Platform.OS === 'web' ? 'auto' : 'none'}
+            onFocus={() => Platform.OS === 'web' && setShowDatePickerCulto(true)}
+            onChangeText={Platform.OS === 'web' ? setDataCulto : undefined}
+            type={Platform.OS === 'web' ? 'date' : undefined}
           />
         </TouchableOpacity>
-        {showDatePickerCulto && (
+        {Platform.OS !== 'web' && showDatePickerCulto && (
           <DateTimePicker
             testID="datePickerCulto"
-            // Inicializa com a data atual da escala ou a data de hoje se vazia
             value={dataCulto ? new Date(dataCulto) : new Date()}
             mode="date"
             display="default"
-            onChange={onChangeCultoDate}
+            onChange={handleDateChange(setDataCulto, setShowDatePickerCulto)}
           />
         )}
 
@@ -450,42 +463,48 @@ export default function EditarEscalas({ navigation }) {
         {/* Inputs de Data e Hora do Ensaio (condicional) */}
         {marcarEnsaio && (
           <View>
-            <TouchableOpacity onPress={() => setShowDatePickerEnsaio(true)}>
+            <TouchableOpacity onPress={() => setShowDatePickerEnsaio(true)} style={Platform.OS === 'web' ? null : { width: '100%' }}>
               <TextInput
                 style={styles.input}
                 placeholder="Data do ensaio: AAAA-MM-DD"
                 value={dataEnsaio}
-                editable={false}
+                editable={Platform.OS === 'web'}
+                pointerEvents={Platform.OS === 'web' ? 'auto' : 'none'}
+                onFocus={() => Platform.OS === 'web' && setShowDatePickerEnsaio(true)}
+                onChangeText={Platform.OS === 'web' ? setDataEnsaio : undefined}
+                type={Platform.OS === 'web' ? 'date' : undefined}
               />
             </TouchableOpacity>
-            {showDatePickerEnsaio && (
+            {Platform.OS !== 'web' && showDatePickerEnsaio && (
               <DateTimePicker
                 testID="datePickerEnsaio"
-                // Inicializa com a data atual do ensaio ou a data de hoje se vazia
                 value={dataEnsaio ? new Date(dataEnsaio) : new Date()}
                 mode="date"
                 display="default"
-                onChange={onChangeEnsaioDate}
+                onChange={handleDateChange(setDataEnsaio, setShowDatePickerEnsaio)}
               />
             )}
 
-            <TouchableOpacity onPress={() => setShowTimePickerEnsaio(true)}>
+            <TouchableOpacity onPress={() => setShowTimePickerEnsaio(true)} style={Platform.OS === 'web' ? null : { width: '100%' }}>
               <TextInput
                 style={styles.input}
                 placeholder="Hora do ensaio: HH:MM"
                 value={horaEnsaio}
-                editable={false}
+                editable={Platform.OS === 'web'}
+                pointerEvents={Platform.OS === 'web' ? 'auto' : 'none'}
+                onFocus={() => Platform.OS === 'web' && setShowTimePickerEnsaio(true)}
+                onChangeText={Platform.OS === 'web' ? setHoraEnsaio : undefined}
+                type={Platform.OS === 'web' ? 'time' : undefined}
               />
             </TouchableOpacity>
-            {showTimePickerEnsaio && (
+            {Platform.OS !== 'web' && showTimePickerEnsaio && (
               <DateTimePicker
                 testID="timePickerEnsaio"
-                // Usa uma data fictícia para inicializar o picker de tempo
                 value={horaEnsaio ? new Date(`2000-01-01T${horaEnsaio}`) : new Date()}
                 mode="time"
                 is24Hour={true}
                 display="default"
-                onChange={onChangeEnsaioTime}
+                onChange={handleTimeChange(setHoraEnsaio, setShowTimePickerEnsaio)}
               />
             )}
           </View>
@@ -507,7 +526,7 @@ export default function EditarEscalas({ navigation }) {
                   <Text style={styles.removeButtonText}>×</Text>
                 </TouchableOpacity>
 
-                {ministro.foto ? ( // Usando 'ministro.foto' conforme a estrutura de dados
+                {ministro.foto ? (
                   <Image source={{ uri: ministro.foto }} style={styles.avatar} />
                 ) : (
                   <View style={[styles.avatar, styles.avatarSemFoto]}>
@@ -551,7 +570,7 @@ export default function EditarEscalas({ navigation }) {
                   <Text style={styles.musicaLink}>Cifra: {musica.cifra}</Text>
                 </TouchableOpacity>
               )}
-              {musica.tom && ( // Exibe o tom da música se disponível
+              {musica.tom && (
                 <Text style={styles.musicaSubTitle}>Tom: {musica.tom}</Text>
               )}
               <TextInput
@@ -562,14 +581,25 @@ export default function EditarEscalas({ navigation }) {
               />
               {/* WebView para o vídeo do YouTube */}
               {embedUrl && (
-                <View style={styles.videoContainer}>
-                  <WebView
-                    style={styles.videoPlayer}
-                    javaScriptEnabled={true}
-                    domStorageEnabled={true}
-                    source={{ uri: embedUrl }}
-                  />
-                </View>
+                Platform.OS === 'web' ? (
+                  <iframe
+                    title={`youtube-video-${musica.musicaId}`}
+                    style={styles.videoPlayerWeb}
+                    src={embedUrl}
+                    allowFullScreen
+                    frameBorder="0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  ></iframe>
+                ) : (
+                  <View style={styles.videoContainer}>
+                    <WebView
+                      style={styles.videoPlayer}
+                      javaScriptEnabled={true}
+                      domStorageEnabled={true}
+                      source={{ uri: embedUrl }}
+                    />
+                  </View>
+                )
               )}
               <Text style={styles.musicaSubTitle}>Na voz de:</Text>
               <View style={styles.cantoresContainer}>
@@ -584,7 +614,7 @@ export default function EditarEscalas({ navigation }) {
                       >
                         <Text style={styles.removeButtonText}>×</Text>
                       </TouchableOpacity>
-                      {cantor.foto ? ( // Usando 'cantor.foto'
+                      {cantor.foto ? (
                         <Image source={{ uri: cantor.foto }} style={styles.avatar} />
                       ) : (
                         <View style={[styles.avatar, styles.avatarSemFoto]}>
@@ -644,7 +674,7 @@ export default function EditarEscalas({ navigation }) {
                       ministrosEscalados.includes(m.id) && styles.modalItemSelected,
                     ]}
                   >
-                    {m.foto ? ( // Usando 'm.foto'
+                    {m.foto ? (
                       <Image source={{ uri: m.foto }} style={styles.avatar} />
                     ) : (
                       <View style={[styles.avatar, styles.avatarSemFoto]}>
@@ -740,7 +770,7 @@ export default function EditarEscalas({ navigation }) {
                         getCantoresSelecionadosParaMusica(currentMusicIndexForSingers)?.includes(m.id) && styles.modalItemSelected,
                       ]}
                     >
-                      {m.foto ? ( // Usando 'm.foto'
+                      {m.foto ? (
                         <Image source={{ uri: m.foto }} style={styles.avatar} />
                       ) : (
                         <View style={[styles.avatar, styles.avatarSemFoto]}>
@@ -764,306 +794,3 @@ export default function EditarEscalas({ navigation }) {
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    padding: 20,
-    backgroundColor: '#fff',
-    flexGrow: 1,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#F5F6FA',
-  },
-  loadingText: {
-    marginTop: 10,
-    fontSize: 16,
-    color: '#003D29',
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-    backgroundColor: '#F5F6FA',
-  },
-  errorText: {
-    textAlign: 'center',
-    color: 'red',
-    fontSize: 16,
-    marginBottom: 20,
-  },
-  header: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    marginBottom: 20,
-    textAlign: 'center',
-    color: '#333',
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 12,
-    fontSize: 16,
-    color: '#333',
-  },
-  toggleContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 15,
-    paddingVertical: 10,
-    paddingHorizontal: 5,
-    borderRadius: 8,
-    backgroundColor: '#f9f9f9',
-    borderWidth: 1,
-    borderColor: '#eee',
-  },
-  toggleLabel: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#555',
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    marginVertical: 15,
-    color: '#333',
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-    paddingBottom: 5,
-  },
-  cantoresContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    marginBottom: 20,
-    justifyContent: 'center',
-  },
-  cantorBox: {
-    alignItems: 'center',
-    width: 80,
-    position: 'relative',
-    padding: 5,
-  },
-  avatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#DDF7EE',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-  },
-  avatarSemFoto: {
-    backgroundColor: '#DDF7EE',
-  },
-  avatarAdd: {
-    backgroundColor: '#E9FBF4',
-    borderWidth: 2,
-    borderColor: '#6ACF9E',
-  },
-  avatarIniciais: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#3A3A3A',
-  },
-  nomeCantor: {
-    fontSize: 12,
-    marginTop: 4,
-    textAlign: 'center',
-    fontWeight: '600',
-    color: '#444',
-  },
-  subtituloCantor: {
-    fontSize: 11,
-    color: '#666',
-    textAlign: 'center',
-  },
-  removeButton: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    backgroundColor: '#FF5C5C',
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 2,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 1.41,
-  },
-  removeButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 12,
-  },
-  button: {
-    backgroundColor: '#6ACF9E',
-    paddingVertical: 14,
-    borderRadius: 10,
-    alignItems: 'center',
-    marginTop: 30,
-    marginBottom: 20,
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.23,
-    shadowRadius: 2.62,
-  },
-  buttonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 16,
-    letterSpacing: 1,
-  },
-  deleteButton: {
-    backgroundColor: '#dc3545', // Cor vermelha para o botão de deletar
-    marginTop: 10, // Espaçamento extra do botão de salvar
-  },
-  modalContainer: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalContent: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 20,
-    width: '85%',
-    maxHeight: '75%',
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 15,
-    textAlign: 'center',
-    color: '#333',
-  },
-  modalItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    marginBottom: 5,
-    paddingHorizontal: 10,
-  },
-  modalItemSelected: {
-    backgroundColor: '#e0ffe0',
-    borderColor: '#6ACF9E',
-    borderWidth: 1,
-  },
-  inputPickerContainer: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 8,
-    marginBottom: 12,
-    paddingVertical: 0,
-  },
-  picker: {
-    height: 50,
-    width: '100%',
-    color: '#333',
-  },
-  pickerItem: {
-    fontSize: 16,
-  },
-  musicaCard: {
-    backgroundColor: '#f8f8f8',
-    borderRadius: 10,
-    padding: 15,
-    marginBottom: 15,
-    borderWidth: 1,
-    borderColor: '#eee',
-    elevation: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 1.41,
-  },
-  musicaTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 8,
-    color: '#333',
-  },
-  musicaLink: {
-    color: '#007bff',
-    textDecorationLine: 'underline',
-    marginBottom: 10,
-    fontSize: 14,
-  },
-  musicaSubTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    marginTop: 10,
-    marginBottom: 5,
-    color: '#555',
-  },
-  removeMusicaButton: {
-    backgroundColor: '#dc3545',
-    paddingVertical: 10,
-    borderRadius: 10,
-    alignItems: 'center',
-    marginTop: 15,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.20,
-    shadowRadius: 1.41,
-  },
-  removeMusicaButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 14,
-  },
-  videoContainer: {
-    height: 200,
-    marginBottom: 10,
-    overflow: 'hidden',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#ddd',
-  },
-  videoPlayer: {
-    flex: 1,
-  },
-  pickerInputSimulated: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 12,
-    backgroundColor: '#fff',
-    justifyContent: 'center',
-    height: 50,
-  },
-  pickerInputSimulatedText: {
-    fontSize: 16,
-    color: '#777',
-  },
-  noResultsText: {
-    textAlign: 'center',
-    marginTop: 20,
-    fontSize: 16,
-    color: '#888',
-  },
-});

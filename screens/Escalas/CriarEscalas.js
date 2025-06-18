@@ -3,7 +3,6 @@ import {
   View,
   Text,
   TextInput,
-  StyleSheet,
   ScrollView,
   TouchableOpacity,
   Alert,
@@ -11,13 +10,19 @@ import {
   Modal,
   Switch,
   Linking,
-  ActivityIndicator, // ADDED: Import ActivityIndicator
+  ActivityIndicator,
+  Platform,
 } from 'react-native';
-import { WebView } from 'react-native-webview';
 import { db, auth } from '../../services/firebase';
 import { collection, addDoc, getDocs, doc, getDoc, query, where } from 'firebase/firestore';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import BottomTab from '../../components/BottomTab';
+import styles from './CriarEscalas.styles';
+
+let WebView;
+if (Platform.OS !== 'web') {
+  WebView = require('react-native-webview').WebView;
+}
 
 export default function CriarEscalas({ navigation }) {
   const [dataCulto, setDataCulto] = useState('');
@@ -28,8 +33,8 @@ export default function CriarEscalas({ navigation }) {
   const [showDatePickerEnsaio, setShowDatePickerEnsaio] = useState(false);
   const [showTimePickerEnsaio, setShowTimePickerEnsaio] = useState(false);
 
-  const [ministros, setMinistros] = useState([]); // All active users from the church
-  const [ministrosEscalados, setMinistrosEscalados] = useState([]); // IDs of selected ministers for the scale
+  const [ministros, setMinistros] = useState([]);
+  const [ministrosEscalados, setMinistrosEscalados] = useState([]); // Array de UIDs de ministros escalados
   const [modalMinistrosVisible, setModalMinistrosVisible] = useState(false);
 
   const [musicasDisponiveis, setMusicasDisponiveis] = useState([]);
@@ -41,31 +46,28 @@ export default function CriarEscalas({ navigation }) {
   const [modalCantoresMusicaVisible, setModalCantoresMusicaVisible] = useState(false);
 
   const [userChurchId, setUserChurchId] = useState(null);
-  const [loading, setLoading] = useState(true); // ADDED: Loading state for data fetching
-  const [telaErro, setTelaErro] = useState(''); // ADDED: State to display errors
+  const [loading, setLoading] = useState(true);
+  const [telaErro, setTelaErro] = useState('');
 
-  // ADDED: State for minister search query and filtered ministers in modal
   const [cantorSearchQuery, setCantorSearchQuery] = useState('');
   const [filteredMinistros, setFilteredMinistros] = useState([]);
 
   useEffect(() => {
     const carregarDadosDoUsuarioEIgreja = async () => {
-      setLoading(true); // Set loading true at the start
-      setTelaErro(''); // Clear any previous errors
+      setLoading(true);
+      setTelaErro('');
 
       const currentUser = auth.currentUser;
       if (!currentUser) {
         Alert.alert('Erro', 'Usuário não autenticado.');
-        setTelaErro('Usuário não autenticado. Por favor, faça login.'); // Set error for display
-        setLoading(false); // Stop loading
-        navigation.navigate('Login'); // Redirect to login
+        setTelaErro('Usuário não autenticado. Por favor, faça login.');
+        setLoading(false);
+        navigation.navigate('Login');
         return;
       }
 
       try {
         let foundIgrejaId = null;
-
-        // Try to find the user's church ID by querying all churches
         const igrejasSnapshot = await getDocs(collection(db, 'igrejas'));
 
         for (const docIgreja of igrejasSnapshot.docs) {
@@ -73,7 +75,7 @@ export default function CriarEscalas({ navigation }) {
           const usuarioDocSnap = await getDoc(usuarioDocRef);
 
           if (usuarioDocSnap.exists()) {
-            foundIgrejaId = docIgreja.id; // Found the user's church
+            foundIgrejaId = docIgreja.id;
             break;
           }
         }
@@ -82,48 +84,48 @@ export default function CriarEscalas({ navigation }) {
           Alert.alert('Erro', 'Não foi possível encontrar a igreja associada ao seu usuário.');
           setTelaErro('Não foi possível encontrar a igreja associada ao seu usuário.');
           setLoading(false);
-          // Talvez redirecionar para uma tela de configuração de igreja ou logout
           navigation.goBack();
           return;
         }
 
         setUserChurchId(foundIgrejaId);
 
-        // Carregar ministros (usuários) aprovados da igreja específica
         const ministrosQuery = query(
-          collection(db, 'igrejas', foundIgrejaId, 'usuarios'), // Use foundIgrejaId here
-          where('aprovado', '==', true) // Filter only approved users
+          collection(db, 'igrejas', foundIgrejaId, 'usuarios'),
+          where('aprovado', '==', true)
         );
         const ministrosSnap = await getDocs(ministrosQuery);
         const listaMinistros = ministrosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         setMinistros(listaMinistros);
-        setFilteredMinistros(listaMinistros); // Initialize filtered list with all ministers
+        setFilteredMinistros(listaMinistros);
 
-        // Carregar músicas da igreja específica
-        const musicasQuery = collection(db, 'igrejas', foundIgrejaId, 'musicas'); // Use foundIgrejaId here
+        // Adiciona o UID do usuário logado (criador) aos ministros escalados, se ainda não estiver
+        if (!ministrosEscalados.includes(currentUser.uid)) {
+          setMinistrosEscalados(prev => [...prev, currentUser.uid]);
+        }
+
+        const musicasQuery = collection(db, 'igrejas', foundIgrejaId, 'musicas');
         const musicasSnap = await getDocs(musicasQuery);
         const listaMusicas = musicasSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         setMusicasDisponiveis(listaMusicas);
-        setFilteredMusicas(listaMusicas); // Initialize filtered list
+        setFilteredMusicas(listaMusicas);
       } catch (error) {
-        console.error('Erro ao buscar dados do usuário ou da igreja:', error);
         Alert.alert('Erro', 'Não foi possível carregar os dados. Tente novamente mais tarde.');
         setTelaErro('Erro ao carregar dados. Tente novamente.');
       } finally {
-        setLoading(false); // Stop loading regardless of success or error
+        setLoading(false);
       }
     };
     carregarDadosDoUsuarioEIgreja();
-  }, [navigation]); // Added navigation to dependency array as it's used inside
+  }, [navigation]); // Dependência de navigation
 
-  // ADDED: Effect to filter ministers when search query or available ministers change
   useEffect(() => {
     if (cantorSearchQuery) {
       const lowerCaseQuery = cantorSearchQuery.toLowerCase();
       const filtered = ministros.filter(user =>
         user.nome.toLowerCase().includes(lowerCaseQuery) ||
         (user.sobrenome && user.sobrenome.toLowerCase().includes(lowerCaseQuery)) ||
-        (user.area && user.area.toLowerCase().includes(lowerCaseQuery)) // Allow searching by area too
+        (user.area && user.area.toLowerCase().includes(lowerCaseQuery))
       );
       setFilteredMinistros(filtered);
     } else {
@@ -132,7 +134,6 @@ export default function CriarEscalas({ navigation }) {
   }, [cantorSearchQuery, ministros]);
 
 
-  // Efeito para filtrar músicas quando a busca ou a lista de músicas disponíveis muda
   useEffect(() => {
     if (musicaSearchQuery) {
       const lowerCaseQuery = musicaSearchQuery.toLowerCase();
@@ -145,31 +146,24 @@ export default function CriarEscalas({ navigation }) {
     }
   }, [musicaSearchQuery, musicasDisponiveis]);
 
-  // --- Funções para Seleção de Data e Hora ---
-  const onChangeCultoDate = (event, selectedDate) => {
-    const currentDate = selectedDate || new Date();
-    setShowDatePickerCulto(false);
-    setDataCulto(currentDate.toISOString().split('T')[0]); // Formato AAAA-MM-DD
+  const handleDateChange = (setter, showSetter) => (event, selectedValue) => {
+    showSetter(false);
+    if (selectedValue) {
+      setter(selectedValue.toISOString().split('T')[0]);
+    }
   };
 
-  const onChangeEnsaioDate = (event, selectedDate) => {
-    const currentDate = selectedDate || new Date();
-    setShowDatePickerEnsaio(false);
-    setDataEnsaio(currentDate.toISOString().split('T')[0]); // Formato AAAA-MM-DD
+  const handleTimeChange = (setter, showSetter) => (event, selectedValue) => {
+    showSetter(false);
+    if (selectedValue) {
+      setter(selectedValue.toTimeString().split(' ')[0].substring(0, 5));
+    }
   };
 
-  const onChangeEnsaioTime = (event, selectedTime) => {
-    const currentTime = selectedTime || new Date();
-    setShowTimePickerEnsaio(false);
-    setHoraEnsaio(currentTime.toTimeString().split(' ')[0].substring(0, 5)); // Formato HH:MM
-  };
-
-  // --- Funções para Ministros ---
   const toggleMinistroEscalado = (id) => {
     setMinistrosEscalados(prev => {
       const isCurrentlyEscalado = prev.includes(id);
       if (isCurrentlyEscalado) {
-        // Se o ministro for removido da escala geral, remove também de todas as músicas
         setMusicasSelecionadas(prevMusicas => {
           return prevMusicas.map(musica => ({
             ...musica,
@@ -188,13 +182,11 @@ export default function CriarEscalas({ navigation }) {
     return ministro ? ministro.nome : 'Ministro Desconhecido';
   };
 
-  // Corrected to use 'foto' field as per your data structure
   const getMinistroFotoById = (id) => {
     const ministro = ministros.find(m => m.id === id);
-    return ministro ? ministro.foto : null; // Changed from fotoURL to foto
+    return ministro ? ministro.foto : null;
   };
 
-  // Corrected to include sobrenome in initials
   const getMinistroIniciaisById = (id) => {
     const ministro = ministros.find(m => m.id === id);
     if (!ministro || !ministro.nome) return '';
@@ -206,8 +198,7 @@ export default function CriarEscalas({ navigation }) {
       .join('');
   };
 
-  // --- Funções para Músicas ---
-  const handleAdicionarMusicas = (musicaId) => {
+  const handleAdicionarMusica = (musicaId) => {
     const musicaJaAdicionada = musicasSelecionadas.some(m => m.musicaId === musicaId);
     if (musicaJaAdicionada) {
       Alert.alert('Atenção', 'Esta música já foi adicionada à escala.');
@@ -223,12 +214,12 @@ export default function CriarEscalas({ navigation }) {
           musicaNome: musica.nome,
           cifra: musica.cifra,
           video: musica.video || '',
-          tom: musica.tom || '', // Added 'tom' field for consistency if needed in scale music data
+          tom: musica.tom || '',
           cantores: [],
         },
       ]);
-      setModalMusicasVisible(false); // Fecha o modal após adicionar
-      setMusicaSearchQuery(''); // Limpa a busca
+      setModalMusicasVisible(false);
+      setMusicaSearchQuery('');
     }
   };
 
@@ -237,10 +228,7 @@ export default function CriarEscalas({ navigation }) {
       'Remover Música',
       'Tem certeza que deseja remover esta música da escala?',
       [
-        {
-          text: 'Cancelar',
-          style: 'cancel',
-        },
+        { text: 'Cancelar', style: 'cancel' },
         {
           text: 'Remover',
           onPress: () => {
@@ -262,7 +250,6 @@ export default function CriarEscalas({ navigation }) {
     setMusicasSelecionadas(newMusicas);
   };
 
-  // Função para extrair o ID do vídeo do YouTube e montar a URL de embed
   const getYouTubeEmbedUrl = (url) => {
     if (!url) return null;
 
@@ -274,7 +261,6 @@ export default function CriarEscalas({ navigation }) {
     return null;
   };
 
-  // Funções para cantores da música
   const openCantoresMusicaModal = (index) => {
     setCurrentMusicIndexForSingers(index);
     setModalCantoresMusicaVisible(true);
@@ -311,7 +297,6 @@ export default function CriarEscalas({ navigation }) {
     });
   };
 
-  // --- Função para Criar Escala ---
   const criarEscala = async () => {
     if (!dataCulto) {
       Alert.alert('Erro', 'Por favor, selecione a data do culto.');
@@ -344,11 +329,10 @@ export default function CriarEscalas({ navigation }) {
         return;
       }
 
-      // Adicionar a escala dentro da subcollection 'escalas' da igreja
       await addDoc(collection(db, 'igrejas', userChurchId, 'escalas'), {
         criadoEm: new Date(),
         criadoPor: currentUser.uid,
-        igrejaId: userChurchId, // Adiciona o ID da igreja à escala
+        igrejaId: userChurchId,
         dataCulto: dataCulto,
         ensaio: marcarEnsaio,
         dataEnsaio: marcarEnsaio ? dataEnsaio : null,
@@ -359,11 +343,10 @@ export default function CriarEscalas({ navigation }) {
           musicaId: m.musicaId,
           musicaNome: m.musicaNome,
           video: m.video,
-          tom: m.tom || '', // Include tom in the saved scale music data
+          tom: m.tom || '',
         })),
         usuariosEscalados: ministrosEscalados,
       });
-
       Alert.alert('Sucesso', 'Escala criada com sucesso!');
       setDataCulto('');
       setMarcarEnsaio(false);
@@ -373,12 +356,10 @@ export default function CriarEscalas({ navigation }) {
       setMusicasSelecionadas([]);
       navigation.goBack?.();
     } catch (e) {
-      console.error('Erro ao criar escala:', e);
       Alert.alert('Erro', 'Não foi possível criar a escala. Tente novamente.');
     }
   };
 
-  // ADDED: Loading and Error UI
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -403,23 +384,37 @@ export default function CriarEscalas({ navigation }) {
     <>
       <ScrollView contentContainerStyle={styles.container}>
         {/* Input de Data do Culto */}
-        <TouchableOpacity onPress={() => setShowDatePickerCulto(true)}>
+        <Text style={styles.sectionTitle}>Data do Culto</Text>
+        <TouchableOpacity
+          onPress={() => setShowDatePickerCulto(true)}
+          style={Platform.OS === 'web' ? null : { width: '100%' }}
+        >
           <TextInput
             style={styles.input}
-            placeholder="Data do culto: AAAA-MM-DD"
+            placeholder="AAAA-MM-DD"
             value={dataCulto}
-            editable={false}
+            editable={Platform.OS === 'web'}
+            pointerEvents={Platform.OS === 'web' ? 'auto' : 'none'}
+            onFocus={() => Platform.OS === 'web' && setShowDatePickerCulto(true)}
+            onChangeText={Platform.OS === 'web' ? setDataCulto : undefined}
+            type={Platform.OS === 'web' ? 'date' : undefined}
           />
         </TouchableOpacity>
-        {showDatePickerCulto && (
+
+        {Platform.OS !== 'web' && showDatePickerCulto && (
           <DateTimePicker
             testID="datePickerCulto"
-            value={new Date()}
+            value={dataCulto ? new Date(dataCulto) : new Date()}
             mode="date"
             display="default"
-            onChange={onChangeCultoDate}
+            minimumDate={new Date()}
+            onChange={handleDateChange(setDataCulto, setShowDatePickerCulto)}
           />
         )}
+        {Platform.OS === 'web' && showDatePickerCulto && (
+           null
+        )}
+
 
         {/* Marcar Ensaio + Toggle */}
         <View style={styles.toggleContainer}>
@@ -436,41 +431,58 @@ export default function CriarEscalas({ navigation }) {
         {/* Inputs de Data e Hora do Ensaio (condicional) */}
         {marcarEnsaio && (
           <View>
-            <TouchableOpacity onPress={() => setShowDatePickerEnsaio(true)}>
+            <Text style={styles.sectionTitle}>Data do Ensaio</Text>
+            <TouchableOpacity onPress={() => setShowDatePickerEnsaio(true)} style={Platform.OS === 'web' ? null : { width: '100%' }}>
               <TextInput
                 style={styles.input}
-                placeholder="Data do ensaio: AAAA-MM-DD"
+                placeholder="AAAA-MM-DD"
                 value={dataEnsaio}
-                editable={false}
+                editable={Platform.OS === 'web'}
+                pointerEvents={Platform.OS === 'web' ? 'auto' : 'none'}
+                onFocus={() => Platform.OS === 'web' && setShowDatePickerEnsaio(true)}
+                onChangeText={Platform.OS === 'web' ? setDataEnsaio : undefined}
+                type={Platform.OS === 'web' ? 'date' : undefined}
               />
             </TouchableOpacity>
-            {showDatePickerEnsaio && (
+            {Platform.OS !== 'web' && showDatePickerEnsaio && (
               <DateTimePicker
                 testID="datePickerEnsaio"
-                value={new Date()}
+                value={dataEnsaio ? new Date(dataEnsaio) : new Date()}
                 mode="date"
                 display="default"
-                onChange={onChangeEnsaioDate}
+                minimumDate={new Date()}
+                onChange={handleDateChange(setDataEnsaio, setShowDatePickerEnsaio)}
               />
             )}
+            {Platform.OS === 'web' && showDatePickerEnsaio && (
+              null
+            )}
 
-            <TouchableOpacity onPress={() => setShowTimePickerEnsaio(true)}>
+            <Text style={styles.sectionTitle}>Hora do Ensaio</Text>
+            <TouchableOpacity onPress={() => setShowTimePickerEnsaio(true)} style={Platform.OS === 'web' ? null : { width: '100%' }}>
               <TextInput
                 style={styles.input}
-                placeholder="Hora do ensaio: HH:MM"
+                placeholder="HH:MM"
                 value={horaEnsaio}
-                editable={false}
+                editable={Platform.OS === 'web'}
+                pointerEvents={Platform.OS === 'web' ? 'auto' : 'none'}
+                onFocus={() => Platform.OS === 'web' && setShowTimePickerEnsaio(true)}
+                onChangeText={Platform.OS === 'web' ? setHoraEnsaio : undefined}
+                type={Platform.OS === 'web' ? 'time' : undefined}
               />
             </TouchableOpacity>
-            {showTimePickerEnsaio && (
+            {Platform.OS !== 'web' && showTimePickerEnsaio && (
               <DateTimePicker
                 testID="timePickerEnsaio"
-                value={new Date()}
+                value={horaEnsaio ? new Date(`2000-01-01T${horaEnsaio}`) : new Date()}
                 mode="time"
                 is24Hour={true}
                 display="default"
-                onChange={onChangeEnsaioTime}
+                onChange={handleTimeChange(setHoraEnsaio, setShowTimePickerEnsaio)}
               />
+            )}
+            {Platform.OS === 'web' && showTimePickerEnsaio && (
+              null
             )}
           </View>
         )}
@@ -491,7 +503,7 @@ export default function CriarEscalas({ navigation }) {
                   <Text style={styles.removeButtonText}>×</Text>
                 </TouchableOpacity>
 
-                {ministro.foto ? ( // Corrected from fotoURL to foto
+                {ministro.foto ? (
                   <Image source={{ uri: ministro.foto }} style={styles.avatar} />
                 ) : (
                   <View style={[styles.avatar, styles.avatarSemFoto]}>
@@ -506,7 +518,6 @@ export default function CriarEscalas({ navigation }) {
             );
           })}
 
-          {/* Botão de adicionar músico */}
           <TouchableOpacity onPress={() => setModalMinistrosVisible(true)} style={styles.cantorBox}>
             <View style={[styles.avatar, styles.avatarAdd]}>
               <Text style={{ fontSize: 30, color: '#6ACF9E' }}>+</Text>
@@ -535,7 +546,7 @@ export default function CriarEscalas({ navigation }) {
                   <Text style={styles.musicaLink}>Cifra: {musica.cifra}</Text>
                 </TouchableOpacity>
               )}
-              {musica.tom && ( // Display 'tom' if it exists
+              {musica.tom && (
                 <Text style={styles.musicaSubTitle}>Tom: {musica.tom}</Text>
               )}
               <TextInput
@@ -544,16 +555,26 @@ export default function CriarEscalas({ navigation }) {
                 value={musica.video}
                 onChangeText={(text) => updateMusicaVideoLink(index, text)}
               />
-              {/* WebView para o vídeo do YouTube */}
               {embedUrl && (
-                <View style={styles.videoContainer}>
-                  <WebView
-                    style={styles.videoPlayer}
-                    javaScriptEnabled={true}
-                    domStorageEnabled={true}
-                    source={{ uri: embedUrl }}
-                  />
-                </View>
+                Platform.OS === 'web' ? (
+                  <iframe
+                    title={`youtube-video-${musica.musicaId}`}
+                    style={styles.videoPlayerWeb}
+                    src={embedUrl}
+                    allowFullScreen
+                    frameBorder="0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  ></iframe>
+                ) : (
+                  <View style={styles.videoContainer}>
+                    <WebView
+                      style={styles.videoPlayer}
+                      javaScriptEnabled={true}
+                      domStorageEnabled={true}
+                      source={{ uri: embedUrl }}
+                    />
+                  </View>
+                )
               )}
               <Text style={styles.musicaSubTitle}>Na voz de:</Text>
               <View style={styles.cantoresContainer}>
@@ -568,7 +589,7 @@ export default function CriarEscalas({ navigation }) {
                       >
                         <Text style={styles.removeButtonText}>×</Text>
                       </TouchableOpacity>
-                      {cantor.foto ? ( // Corrected from fotoURL to foto
+                      {cantor.foto ? (
                         <Image source={{ uri: cantor.foto }} style={styles.avatar} />
                       ) : (
                         <View style={[styles.avatar, styles.avatarSemFoto]}>
@@ -610,13 +631,12 @@ export default function CriarEscalas({ navigation }) {
           animationType="slide"
           onRequestClose={() => {
             setModalMinistrosVisible(false);
-            setCantorSearchQuery(''); // Clear search on modal close
+            setCantorSearchQuery('');
           }}
         >
           <View style={styles.modalContainer}>
             <View style={styles.modalContent}>
               <Text style={styles.modalTitle}>Adicionar Músicos</Text>
-              {/* ADDED: Search input in the modal */}
               <TextInput
                 style={styles.input}
                 placeholder="Buscar por nome ou área..."
@@ -624,11 +644,10 @@ export default function CriarEscalas({ navigation }) {
                 onChangeText={setCantorSearchQuery}
               />
               <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
-                {filteredMinistros.length === 0 ? ( // Using filteredMinistros
+                {filteredMinistros.length === 0 ? (
                   <Text style={styles.noResultsText}>Nenhum usuário ativo disponível na sua igreja.</Text>
                 ) : (
-                  // REMOVED: .filter(m => m.area === 'Cantor(a)')
-                  filteredMinistros.map(m => ( // Using filteredMinistros
+                  filteredMinistros.map(m => (
                     <TouchableOpacity
                       key={m.id}
                       onPress={() => toggleMinistroEscalado(m.id)}
@@ -637,7 +656,7 @@ export default function CriarEscalas({ navigation }) {
                         ministrosEscalados.includes(m.id) && styles.modalItemSelected,
                       ]}
                     >
-                      {m.foto ? ( // Corrected from fotoURL to foto
+                      {m.foto ? (
                         <Image source={{ uri: m.foto }} style={styles.avatar} />
                       ) : (
                         <View style={[styles.avatar, styles.avatarSemFoto]}>
@@ -653,7 +672,7 @@ export default function CriarEscalas({ navigation }) {
               </ScrollView>
               <TouchableOpacity style={styles.button} onPress={() => {
                 setModalMinistrosVisible(false);
-                setCantorSearchQuery(''); // Clear search on close
+                setCantorSearchQuery('');
               }}>
                 <Text style={styles.buttonText}>FECHAR</Text>
               </TouchableOpacity>
@@ -668,7 +687,7 @@ export default function CriarEscalas({ navigation }) {
           animationType="slide"
           onRequestClose={() => {
             setModalMusicasVisible(false);
-            setMusicaSearchQuery(''); // Limpa a busca ao fechar
+            setMusicaSearchQuery('');
           }}
         >
           <View style={styles.modalContainer}>
@@ -685,12 +704,12 @@ export default function CriarEscalas({ navigation }) {
                   filteredMusicas.map(musica => (
                     <TouchableOpacity
                       key={musica.id}
-                      onPress={() => handleAdicionarMusicas(musica.id)}
+                      onPress={() => handleAdicionarMusica(musica.id)}
                       style={[
                         styles.modalItem,
                         musicasSelecionadas.some(m => m.musicaId === musica.id) && styles.modalItemSelected,
                       ]}
-                      disabled={musicasSelecionadas.some(m => m.musicaId === musica.id)} // Desabilita se já selecionada
+                      disabled={musicasSelecionadas.some(m => m.musicaId === musica.id)}
                     >
                       <Text style={{ marginLeft: 10, flex: 1 }}>{musica.nome}</Text>
                       {musicasSelecionadas.some(m => m.musicaId === musica.id) && (
@@ -702,13 +721,10 @@ export default function CriarEscalas({ navigation }) {
                   <Text style={styles.noResultsText}>Nenhuma música encontrada ou disponível.</Text>
                 )}
               </ScrollView>
-              <TouchableOpacity
-                style={styles.button}
-                onPress={() => {
-                  setModalMusicasVisible(false);
-                  setMusicaSearchQuery('');
-                }}
-              >
+              <TouchableOpacity style={styles.button} onPress={() => {
+                setModalMusicasVisible(false);
+                setMusicaSearchQuery('');
+              }}>
                 <Text style={styles.buttonText}>FECHAR</Text>
               </TouchableOpacity>
             </View>
@@ -722,13 +738,12 @@ export default function CriarEscalas({ navigation }) {
           animationType="slide"
           onRequestClose={() => {
             setModalCantoresMusicaVisible(false);
-            setCantorSearchQuery(''); // Clear search on modal close
+            setCantorSearchQuery('');
           }}
         >
           <View style={styles.modalContainer}>
             <View style={styles.modalContent}>
               <Text style={styles.modalTitle}>Adicionar Cantores para a Música</Text>
-              {/* ADDED: Search input in the modal */}
               <TextInput
                 style={styles.input}
                 placeholder="Buscar por nome ou área..."
@@ -736,12 +751,10 @@ export default function CriarEscalas({ navigation }) {
                 onChangeText={setCantorSearchQuery}
               />
               <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
-                {ministros.length === 0 ? ( // Added check for empty list
+                {ministros.length === 0 ? (
                   <Text style={styles.noResultsText}>Nenhum usuário ativo disponível na sua igreja.</Text>
                 ) : (
-                  // REMOVED: .filter(m => m.area === 'Cantor(a)' && ministrosEscalados.includes(m.id))
-                  // Now only filters by search query among the initially loaded ministers
-                  filteredMinistros.map(m => ( // Using filteredMinistros
+                  filteredMinistros.map(m => (
                     <TouchableOpacity
                       key={m.id}
                       onPress={() => toggleCantorMusica(m.id)}
@@ -750,7 +763,7 @@ export default function CriarEscalas({ navigation }) {
                         getCantoresSelecionadosParaMusica(currentMusicIndexForSingers)?.includes(m.id) && styles.modalItemSelected,
                       ]}
                     >
-                      {m.foto ? ( // Corrected from fotoURL to foto
+                      {m.foto ? (
                         <Image source={{ uri: m.foto }} style={styles.avatar} />
                       ) : (
                         <View style={[styles.avatar, styles.avatarSemFoto]}>
@@ -766,7 +779,7 @@ export default function CriarEscalas({ navigation }) {
               </ScrollView>
               <TouchableOpacity style={styles.button} onPress={() => {
                 setModalCantoresMusicaVisible(false);
-                setCantorSearchQuery(''); // Clear search on close
+                setCantorSearchQuery('');
               }}>
                 <Text style={styles.buttonText}>FECHAR</Text>
               </TouchableOpacity>
@@ -778,280 +791,3 @@ export default function CriarEscalas({ navigation }) {
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    padding: 20,
-    backgroundColor: '#fff',
-    flexGrow: 1,
-  },
-  loadingContainer: { // ADDED: Styles for loading
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#F5F6FA',
-  },
-  loadingText: { // ADDED: Styles for loading text
-    marginTop: 10,
-    fontSize: 16,
-    color: '#003D29',
-  },
-  errorContainer: { // ADDED: Styles for error container
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-    backgroundColor: '#F5F6FA',
-  },
-  errorText: { // ADDED: Styles for error text
-    textAlign: 'center',
-    color: 'red',
-    fontSize: 16,
-    marginBottom: 20,
-  },
-  button: { // Re-added button styles from previous context for the error screen
-    backgroundColor: '#6ACF9E',
-    paddingVertical: 14,
-    borderRadius: 10,
-    alignItems: 'center',
-    marginTop: 30,
-    marginBottom: 20,
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.23,
-    shadowRadius: 2.62,
-  },
-  buttonText: { // Re-added buttonText styles
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 16,
-    letterSpacing: 1,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 12,
-    fontSize: 16,
-    color: '#333',
-  },
-  toggleContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 15,
-    paddingVertical: 10,
-    paddingHorizontal: 5,
-    borderRadius: 8,
-    backgroundColor: '#f9f9f9',
-    borderWidth: 1,
-    borderColor: '#eee',
-  },
-  toggleLabel: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#555',
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    marginVertical: 15,
-    color: '#333',
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-    paddingBottom: 5,
-  },
-  cantoresContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    marginBottom: 20,
-    justifyContent: 'center',
-  },
-  cantorBox: {
-    alignItems: 'center',
-    width: 80,
-    position: 'relative',
-    padding: 5,
-  },
-  avatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#DDF7EE',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-  },
-  avatarSemFoto: {
-    backgroundColor: '#DDF7EE',
-  },
-  avatarAdd: {
-    backgroundColor: '#E9FBF4',
-    borderWidth: 2,
-    borderColor: '#6ACF9E',
-  },
-  avatarIniciais: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#3A3A3A',
-  },
-  nomeCantor: {
-    fontSize: 12,
-    marginTop: 4,
-    textAlign: 'center',
-    fontWeight: '600',
-    color: '#444',
-  },
-  subtituloCantor: {
-    fontSize: 11,
-    color: '#666',
-    textAlign: 'center',
-  },
-  removeButton: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    backgroundColor: '#FF5C5C',
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 2,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 1.41,
-  },
-  removeButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 12,
-  },
-  musicaCard: {
-    backgroundColor: '#f8f8f8',
-    borderRadius: 10,
-    padding: 15,
-    marginBottom: 15,
-    borderWidth: 1,
-    borderColor: '#eee',
-    elevation: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 1.41,
-  },
-  musicaTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 8,
-    color: '#333',
-  },
-  musicaLink: {
-    color: '#007bff',
-    textDecorationLine: 'underline',
-    marginBottom: 10,
-    fontSize: 14,
-  },
-  musicaSubTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    marginTop: 10,
-    marginBottom: 5,
-    color: '#555',
-  },
-  removeMusicaButton: {
-    backgroundColor: '#dc3545',
-    paddingVertical: 10,
-    borderRadius: 10,
-    alignItems: 'center',
-    marginTop: 15,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.20,
-    shadowRadius: 1.41,
-  },
-  removeMusicaButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 14,
-  },
-  videoContainer: {
-    height: 200,
-    marginBottom: 10,
-    overflow: 'hidden',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#ddd',
-  },
-  videoPlayer: {
-    flex: 1,
-  },
-  pickerInputSimulated: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 12,
-    backgroundColor: '#fff',
-    justifyContent: 'center',
-    height: 50,
-  },
-  pickerInputSimulatedText: {
-    fontSize: 16,
-    color: '#777',
-  },
-  modalContainer: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalContent: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 20,
-    width: '85%',
-    maxHeight: '75%',
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 15,
-    textAlign: 'center',
-    color: '#333',
-  },
-  modalItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    marginBottom: 5,
-    paddingHorizontal: 10,
-  },
-  modalItemSelected: {
-    backgroundColor: '#e0ffe0',
-    borderColor: '#6ACF9E',
-    borderWidth: 1,
-  },
-  noResultsText: {
-    textAlign: 'center',
-    marginTop: 20,
-    fontSize: 16,
-    color: '#888',
-  },
-});

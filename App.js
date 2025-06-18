@@ -22,6 +22,7 @@ import Detalhes from './screens/Musicas/Detalhes';
 // Importando as telas de Escalas
 import Escalas from './screens/Escalas/Escalas'
 import CriarEscalas from './screens/Escalas/CriarEscalas';
+import EditarEscala from './screens/Escalas/EditarEscala';
 import EscalaDetalhes from './screens/Escalas/EscalaDetalhes';
 
 // Importando a tela de Pagamento
@@ -41,12 +42,17 @@ export default function App() {
 
           {/* Após login */}
           <Stack.Screen name="Home" component={Home} options={{ title: 'Bem-vindo' }} />
-          <Stack.Screen name="Escalas" component={Escalas} />
-          <Stack.Screen name="CriarEscalas" component={CriarEscalas} />
+
+          {/* Músicas - após login */}
           <Stack.Screen name="Musicas" component={Musicas} />
           <Stack.Screen name="EditarMusica" component={EditarMusica} />
           <Stack.Screen name="AdicionarMusica" component={AdicionarMusica} />
           <Stack.Screen name="MusicaDetalhes" component={Detalhes} options={{ headerShown: false }} />
+
+          {/* Escalas - após login */}
+          <Stack.Screen name="Escalas" component={Escalas} />
+          <Stack.Screen name="CriarEscalas" component={CriarEscalas} />
+          <Stack.Screen name="EditarEscala" component={EditarEscala} options={{ title: 'Editar Escala' }} />
           <Stack.Screen name="EscalaDetalhes" component={EscalaDetalhes} options={{ title: 'Detalhes da Escala' }} />
           
           {/* Perfil e Membros */}
