@@ -5,7 +5,6 @@ import {
   TextInput,
   Text,
   TouchableOpacity,
-  StyleSheet,
   Alert,
   Modal,
   FlatList,
@@ -18,7 +17,7 @@ import {
 import { AntDesign, Feather, MaterialIcons } from '@expo/vector-icons';
 import { auth, db } from '../../services/firebase';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { doc, setDoc, getDocs, query, collection, where, writeBatch, getDoc } from 'firebase/firestore';
+import { doc, setDoc, getDocs, query, collection, where, writeBatch, getDoc, addDoc } from 'firebase/firestore'; // Adicionado addDoc
 
 export default function CadastroMembro({ navigation }) {
   const [nome, setNome] = useState('');
@@ -57,7 +56,7 @@ export default function CadastroMembro({ navigation }) {
         const loadedChurches = [];
         for (const docSnap of querySnapshot.docs) {
           const churchData = docSnap.data();
-          if (churchData.modoProAtivo === true) {
+          if (churchData.modoProAtivo === true) { // Apenas igrejas com modoProAtivo = true
             loadedChurches.push({ id: docSnap.id, ...churchData });
           }
         }
@@ -70,7 +69,7 @@ export default function CadastroMembro({ navigation }) {
       }
     };
     fetchChurches();
-  }, []); // Sem dependências de route.params aqui
+  }, []);
 
   const selectMusicianArea = (area) => {
     setMusicoArea(area);
@@ -102,24 +101,24 @@ export default function CadastroMembro({ navigation }) {
     }
 
     try {
-      const usuariosRef = collection(db, 'usuarios'); // collectionGroup
+      // 1. Verificar se já existe um usuário com este e-mail aguardando aprovação
+      const usuariosRef = collection(db, 'igrejas', selectedChurch.id, 'usuarios'); // Buscar apenas na igreja selecionada
       const qEmailPendente = query(usuariosRef,
                                    where('email', '==', email),
                                    where('aprovado', '==', false));
       const querySnapshotEmailPendente = await getDocs(qEmailPendente);
 
       if (!querySnapshotEmailPendente.empty) {
-        // Se um cadastro pendente for encontrado, pegamos o ID do documento (que é o userId)
         const userIdExistente = querySnapshotEmailPendente.docs[0].id;
-        const igrejaIdExistente = querySnapshotEmailPendente.docs[0].data().igrejaId; // Pega o igrejaId do documento de usuário
+        const igrejaIdExistente = querySnapshotEmailPendente.docs[0].data().igrejaId;
         
         Alert.alert(
           'Cadastro Pendente!',
-          'Já existe um cadastro para este e-mail aguardando aprovação em outra igreja ou está pendente. Por favor, aguarde a aprovação ou entre em contato com seu líder/suporte.',
+          'Já existe um cadastro para este e-mail aguardando aprovação nesta igreja. Por favor, aguarde a aprovação ou entre em contato com seu líder/suporte.',
           [
             {
               text: 'OK',
-              onPress: () => navigation.replace('Pagamento', { userId: userIdExistente, igrejaId: igrejaIdExistente })
+              onPress: () => navigation.replace('Login') // Redireciona para o Login em vez de Pagamento
             },
           ],
           { cancelable: false }
@@ -127,17 +126,16 @@ export default function CadastroMembro({ navigation }) {
         setIsRegistering(false);
         return;
       }
-
+      
+      // 2. Criar usuário no Firebase Authentication
       const userCredential = await createUserWithEmailAndPassword(auth, email, senha);
       const user = userCredential.user;
-      const memberUserId = user.uid; // Este é o UID do novo usuário, que será o ID do seu documento de perfil
-
-      console.log('Usuário (Membro) criado no Authentication:', memberUserId);
+      const memberUserId = user.uid;
 
       const batch = writeBatch(db);
-      // O documento do usuário na subcoleção terá o UID do usuário como seu ID
       const memberUsuarioDocRef = doc(db, 'igrejas', selectedChurch.id, 'usuarios', memberUserId);
 
+      // 3. Salvar perfil do membro no Firestore (na subcoleção 'usuarios' da igreja)
       batch.set(memberUsuarioDocRef, {
         userId: memberUserId,
         nome: nome,
@@ -145,8 +143,8 @@ export default function CadastroMembro({ navigation }) {
         email: email,
         telefone: telefone,
         area: musicoArea,
-        isLider: false,
-        aprovado: false,
+        isLider: false, // Membros são sempre isLider: false
+        aprovado: false, // Inicia como não aprovado
         igrejaId: selectedChurch.id,
         isMinisterForCults: isMinisterForCults,
         cadastradoEm: new Date(),
@@ -154,9 +152,25 @@ export default function CadastroMembro({ navigation }) {
 
       await batch.commit();
 
-      console.log('Documento de Membro criado no Firestore para:', memberUserId, 'na Igreja:', selectedChurch.nomeIgreja);
-
       setSucesso('Cadastro realizado com sucesso! Aguarde a aprovação do líder da sua igreja.');
+
+      // 4. Criar notificação para o líder principal da igreja
+      const liderPrincipalId = selectedChurch.liderPrincipalId;
+      if (liderPrincipalId) {
+        const notificationMessage = `Novo membro (${nome} ${sobrenome}) aguardando sua aprovação na igreja ${selectedChurch.nomeIgreja}.`;
+        
+        await addDoc(collection(db, 'igrejas', selectedChurch.id, 'notificacoes'), {
+          type: "member_approval",
+          igrejaId: selectedChurch.id,
+          targetUserId: liderPrincipalId, // Notificação direcionada ao líder principal
+          memberId: memberUserId,
+          memberName: `${nome} ${sobrenome}`,
+          memberEmail: email,
+          message: notificationMessage,
+          timestamp: new Date(),
+          read: false,
+        });
+      }
 
       Alert.alert(
         'Cadastro Enviado!',
@@ -298,7 +312,7 @@ export default function CadastroMembro({ navigation }) {
         </View>
 
         <View style={styles.switchContainer}>
-          <Text style={styles.switchText}>Será responsável por cultos (Ministro)?</Text>
+          <Text style={styles.switchText}>Será responsável por escalas de cultos?</Text>
           <Switch
             onValueChange={setIsMinisterForCults}
             value={isMinisterForCults}

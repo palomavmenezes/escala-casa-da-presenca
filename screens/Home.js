@@ -5,25 +5,31 @@ import { auth, db } from '../services/firebase';
 import { signOut } from 'firebase/auth';
 import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
 
+import Menu from './Menu/Menu';
+import styles from './Home.styles'; // Importa os estilos da Home
+
 import BottomTab from '../components/BottomTab';
 import EscalaCard from '../components/Escalas/EscalaCard';
+import { Ionicons } from '@expo/vector-icons'; // Para o ícone de notificação e menu
 
 export default function Home() {
   const navigation = useNavigation();
   const route = useRoute();
 
-  const { userId, igrejaId, isLider } = route.params || { userId: null, igrejaId: null, isLider: false };
+  const { userId, igrejaId, isLider, isMinisterForCults } = route.params || { userId: null, igrejaId: null, isLider: false, isMinisterForCults: false };
 
   const [cultos, setCultos] = useState([]);
   const [isLoadingCultos, setIsLoadingCultos] = useState(true);
   const [errorCultos, setErrorCultos] = useState('');
   const [userChurchIdState, setUserChurchIdState] = useState(igrejaId);
+  const [isMenuVisible, setIsMenuVisible] = useState(false); // Estado para controlar a visibilidade do menu
+  const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0); // Contagem de notificações não lidas
 
   useEffect(() => {
     const initializeHomeData = async () => {
       setIsLoadingCultos(true);
       setErrorCultos('');
-      
+
       let currentUserId = auth.currentUser?.uid;
       let currentIgrejaId = igrejaId;
 
@@ -35,45 +41,35 @@ export default function Home() {
       }
 
       if (!currentIgrejaId) {
-        console.log("Home: igrejaId ausente na rota, buscando do perfil do usuário...");
-        try {
-          let foundIgrejaId = null;
-          const igrejasSnapshot = await getDocs(collection(db, 'igrejas'));
+        let foundIgrejaId = null;
+        const igrejasSnapshot = await getDocs(collection(db, 'igrejas'));
 
-          for (const docIgreja of igrejasSnapshot.docs) {
-            const usuarioDocRef = doc(db, 'igrejas', docIgreja.id, 'usuarios', currentUserId);
-            const usuarioDocSnap = await getDoc(usuarioDocRef);
+        for (const docIgreja of igrejasSnapshot.docs) {
+          const usuarioDocRef = doc(db, 'igrejas', docIgreja.id, 'usuarios', currentUserId);
+          const usuarioDocSnap = await getDoc(usuarioDocRef);
 
-            if (usuarioDocSnap.exists()) {
-              foundIgrejaId = docIgreja.id;
-              break;
-            }
+          if (usuarioDocSnap.exists()) {
+            foundIgrejaId = docIgreja.id;
+            break;
           }
+        }
 
-          if (foundIgrejaId) {
-            currentIgrejaId = foundIgrejaId;
-            setUserChurchIdState(foundIgrejaId);
-            console.log("Home: igrejaId encontrado no perfil do usuário:", currentIgrejaId);
-          } else {
-            setErrorCultos('Não foi possível encontrar a igreja associada ao seu usuário. Faça login novamente.');
-            setIsLoadingCultos(false);
-            return;
-          }
-        } catch (error) {
-          console.error('Home: Erro ao buscar igrejaId do usuário:', error);
-          setErrorCultos('Erro ao carregar dados da sua igreja. Tente novamente.');
+        if (foundIgrejaId) {
+          currentIgrejaId = foundIgrejaId;
+          setUserChurchIdState(foundIgrejaId);
+        } else {
+          setErrorCultos('Não foi possível encontrar a igreja associada ao seu usuário. Faça login novamente.');
           setIsLoadingCultos(false);
           return;
         }
       }
 
       if (currentUserId && currentIgrejaId) {
-        console.log("Home: userId e igrejaId disponíveis. Buscando cultos...");
         buscarCultos(currentUserId, currentIgrejaId);
+        fetchUnreadNotificationsCount(currentIgrejaId, currentUserId); // Busca a contagem de notificações
       } else {
         setIsLoadingCultos(false);
         setErrorCultos('Erro crítico: dados de usuário ou igreja incompletos após tentativa de busca.');
-
       }
     };
 
@@ -86,7 +82,6 @@ export default function Home() {
       navigation.replace('Login');
     } catch (error) {
       Alert.alert('Erro ao sair', error.message);
-      console.error('Erro ao fazer logout:', error);
     }
   };
 
@@ -95,8 +90,6 @@ export default function Home() {
     setErrorCultos('');
     try {
       const escalasRef = collection(db, 'igrejas', currentIgrejaId, 'escalas');
-
-
       const q = query(escalasRef, where('usuariosEscalados', 'array-contains', currentUserId));
       const querySnapshot = await getDocs(q);
 
@@ -126,8 +119,41 @@ export default function Home() {
     }
   };
 
+  // Função para buscar a contagem de notificações não lidas
+  const fetchUnreadNotificationsCount = async (currentIgrejaId, currentUserId) => {
+    try {
+      const notificationsRef = collection(db, 'igrejas', currentIgrejaId, 'notificacoes');
+      const qNotifications = query(
+        notificationsRef,
+        where('read', '==', false),
+        where('targetUserId', '==', currentUserId) // Assume que notificações são direcionadas
+      );
+      const notificationsSnap = await getDocs(qNotifications);
+      setUnreadNotificationsCount(notificationsSnap.size);
+    } catch (error) {
+      console.error('Erro ao buscar contagem de notificações:', error);
+      setUnreadNotificationsCount(0); // Em caso de erro, assume 0
+    }
+  };
+
   return (
     <View style={styles.container}>
+      {/* Top Bar / Header */}
+      <View style={styles.topBar}>
+        <TouchableOpacity onPress={() => setIsMenuVisible(true)}>
+          <Ionicons name="menu" size={30} color="#333" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Home</Text> {/* Título central da Home */}
+        <TouchableOpacity onPress={() => navigation.navigate('Notificacoes')}>
+          <Ionicons name="notifications-outline" size={30} color="#333" />
+          {unreadNotificationsCount > 0 && (
+            <View style={styles.notificationBadge}>
+              <Text style={styles.notificationBadgeText}>{unreadNotificationsCount}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+      </View>
+
       <Text style={styles.title}>Próximos Cultos</Text>
 
       {/* Conditional rendering for loading, error, or content */}
@@ -146,7 +172,7 @@ export default function Home() {
             cultos.map((culto) => (
               <TouchableOpacity
                 key={culto.id}
-                onPress={() => navigation.navigate('EscalaDetalhes', { escala: culto })}
+                onPress={() => navigation.navigate('DetalhesEscala', { escala: culto })}
               >
                 <EscalaCard escala={culto} />
               </TouchableOpacity>
@@ -166,89 +192,25 @@ export default function Home() {
         </ScrollView>
       )}
 
+      {/* Componente Menu (Modal) */}
+      <Menu
+        isVisible={isMenuVisible}
+        onClose={() => setIsMenuVisible(false)}
+        // Passa as props do usuário para o Menu
+        userId={userId}
+        igrejaId={userChurchIdState} // Use o ID da igreja que foi efetivamente carregado/determinado
+        isLider={isLider}
+        isMinisterForCults={isMinisterForCults}
+      />
+
       {/* REPASSA os parâmetros para o BottomTab */}
-      <BottomTab navigation={navigation} userId={userId} igrejaId={userChurchIdState} isLider={isLider} onLogout={logout} />
+      <BottomTab
+        navigation={navigation}
+        userId={userId}
+        igrejaId={userChurchIdState}
+        isLider={isLider}
+        isMinisterForCults={isMinisterForCults}
+      />
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    paddingTop: 20,
-    paddingHorizontal: 20,
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    marginBottom: 20,
-    color: '#333',
-  },
-  scroll: {
-    flex: 1,
-  },
-  doacaoCard: {
-    backgroundColor: '#D1FAE5',
-    padding: 20,
-    borderRadius: 12,
-    marginTop: 20,
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  doacaoTitulo: {
-    fontWeight: 'bold',
-    fontSize: 16,
-    marginBottom: 5,
-    color: '#003D29',
-  },
-  doacaoTexto: {
-    textAlign: 'center',
-    marginBottom: 10,
-    color: '#555',
-  },
-  botaoDoar: {
-    backgroundColor: '#111827',
-    paddingHorizontal: 25,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  botaoTexto: {
-    color: '#fff',
-    fontWeight: 'bold',
-  },
-  loadingIndicator: {
-    marginTop: 50,
-  },
-  noCultosText: {
-    textAlign: 'center',
-    marginTop: 20,
-    fontSize: 16,
-    color: '#777',
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  errorText: {
-    textAlign: 'center',
-    color: 'red',
-    fontSize: 16,
-    marginTop: 20,
-    marginBottom: 20,
-  },
-  retryButton: {
-    backgroundColor: '#003D29',
-    paddingVertical: 12,
-    paddingHorizontal: 25,
-    borderRadius: 10,
-    marginTop: 10,
-  },
-  retryButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-});

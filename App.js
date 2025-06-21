@@ -12,6 +12,7 @@ import CadastroMembro from './screens/Cadastro/CadastroMembro';
 import Login from './screens/Auth/Login';
 import Home from './screens/Home';
 import Perfil from './screens/Perfil';
+import Notificacoes from './screens/Notificacoes/Notificacoes';
 
 // Importando a tela de Adicionar Músicas
 import AdicionarMusica from './screens/Musicas/AdicionarMusica';
@@ -48,6 +49,7 @@ export default function App() {
           <Stack.Screen name="AdicionarMusica" component={AdicionarMusica} />
           <Stack.Screen name="MusicaDetalhes" component={Detalhes} options={{ headerShown: false }} />
           <Stack.Screen name="EscalaDetalhes" component={EscalaDetalhes} options={{ title: 'Detalhes da Escala' }} />
+          <Stack.Screen name="Notificacoes" component={Notificacoes} options={{ title: 'Notificações' }} />
           
           {/* Perfil e Membros */}
           <Stack.Screen name="Perfil" component={Perfil} />
