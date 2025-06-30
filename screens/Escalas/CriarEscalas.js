@@ -17,8 +17,8 @@ import { db, auth } from '../../services/firebase';
 import { collection, addDoc, getDocs, doc, getDoc, query, where } from 'firebase/firestore';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import BottomTab from '../../components/BottomTab';
-import styles from './CriarEscalas.styles'; // Importa estilos de arquivo separado
-import { Ionicons } from '@expo/vector-icons'; // Para ícones nos botões da modal
+import styles from './CriarEscalas.styles';
+import { Ionicons } from '@expo/vector-icons';
 
 let WebView;
 if (Platform.OS !== 'web') {
@@ -34,18 +34,16 @@ export default function CriarEscalas({ navigation }) {
   const [showDatePickerEnsaio, setShowDatePickerEnsaio] = useState(false);
   const [showTimePickerEnsaio, setShowTimePickerEnsaio] = useState(false);
 
-  const [ministros, setMinistros] = useState([]); // Todos os usuários aprovados da igreja
-  // ministrosEscalados agora será um array de objetos { userId: string, roles: string[] }
+  const [ministros, setMinistros] = useState([]);
   const [ministrosEscalados, setMinistrosEscalados] = useState([]);
   const [modalMinistrosVisible, setModalMinistrosVisible] = useState(false);
 
   const [musicasDisponiveis, setMusicasDisponiveis] = useState([]);
-  // musicasSelecionadas agora inclui a propriedade 'tom' e 'cantores' (roles)
   const [musicasSelecionadas, setMusicasSelecionadas] = useState([]);
   const [modalMusicasVisible, setModalMusicasVisible] = useState(false);
   const [musicaSearchQuery, setMusicaSearchQuery] = useState('');
   const [filteredMusicas, setFilteredMusicas] = useState([]);
-  const [currentMusicIndexForSingers, setCurrentMusicIndexForSingers] = useState(null); // Índice da música para editar cantores
+  const [currentMusicIndexForSingers, setCurrentMusicIndexForSingers] = useState(null);
   const [modalCantoresMusicaVisible, setModalCantoresMusicaVisible] = useState(false);
 
   const [userChurchId, setUserChurchId] = useState(null);
@@ -108,10 +106,8 @@ export default function CriarEscalas({ navigation }) {
         setMinistros(listaMinistros);
         setFilteredMinistros(listaMinistros);
 
-        // GARANTIA: SEMPRE ADICIONAR O CRIADOR DA ESCALA À LISTA DE ESCALADOS
         const criador = listaMinistros.find(m => m.id === currentUser.uid);
         if (criador && !ministrosEscalados.some(m => m.userId === currentUser.uid)) {
-          // Inicializa o criador com a role 'Vocal' ou a primeira da lista padrão, ou a área dele se tiver
           const initialRoles = criador.area ? [criador.area] : ['Vocal'];
           setMinistrosEscalados(prev => [...prev, { userId: currentUser.uid, roles: initialRoles }]);
         }
@@ -143,7 +139,6 @@ export default function CriarEscalas({ navigation }) {
       setFilteredMinistros(ministros);
     }
   }, [cantorSearchQuery, ministros]);
-
 
   useEffect(() => {
     if (musicaSearchQuery) {
@@ -179,13 +174,11 @@ export default function CriarEscalas({ navigation }) {
       const isCreator = id === currentUser.uid;
 
       if (isCurrentlyEscalado) {
-        if (isCreator) { // Impede remover o criador
+        if (isCreator) {
           Alert.alert('Atenção', 'Você não pode remover a si mesmo da escala.');
           return prev;
         }
-        // Remove o ministro e suas roles
         const updatedMinistros = prev.filter(m => m.userId !== id);
-        // Remove também de todas as músicas onde ele era cantor
         setMusicasSelecionadas(prevMusicas => {
           return prevMusicas.map(musica => ({
             ...musica,
@@ -194,7 +187,6 @@ export default function CriarEscalas({ navigation }) {
         });
         return updatedMinistros;
       } else {
-        // Adiciona o ministro com uma role padrão (ex: 'Vocal') ou a primeira da lista
         return [...prev, { userId: id, roles: ['Vocal'] }];
       }
     });
@@ -221,13 +213,11 @@ export default function CriarEscalas({ navigation }) {
       .join('');
   };
 
-  // NOVO: Função para obter os papéis de um ministro escalado
   const getMinistroRolesById = (id) => {
     const ministroEscalado = ministrosEscalados.find(m => m.userId === id);
     return ministroEscalado ? ministroEscalado.roles : [];
   };
 
-  // NOVO: Funções para a Modal de seleção de papéis
   const openMinistroRolesModal = (userId) => {
     setCurrentMinistroBeingEdited(userId);
     const currentRoles = getMinistroRolesById(userId);
@@ -383,7 +373,6 @@ export default function CriarEscalas({ navigation }) {
         return;
       }
 
-      // Adicionar a escala dentro da subcollection 'escalas' da igreja
       const newEscalaRef = await addDoc(collection(db, 'igrejas', userChurchId, 'escalas'), {
         criadoEm: new Date(),
         criadoPor: currentUser.uid,
@@ -400,28 +389,27 @@ export default function CriarEscalas({ navigation }) {
           video: m.video,
           tom: m.tom || '',
         })),
-        // ministrosEscalados agora é um array de objetos { userId, roles }
         usuariosEscalados: ministrosEscalados,
+        usuariosEscaladosIds: ministrosEscalados.map(m => m.userId),
       });
 
-      // NOVO: Notificação de criação de escala
-      // Manda para todos os usuários escalados
       const notificationMessage = `Uma nova escala para ${dataCulto} foi criada para você.`;
-      const notificationRecipients = ministrosEscalados.map(m => m.userId);
 
-      await addDoc(collection(db, 'igrejas', userChurchId, 'notificacoes'), {
-        type: 'scale_created',
-        igrejaId: userChurchId,
-        escalaId: newEscalaRef.id,
-        escalaDate: dataCulto,
-        eventType: 'created',
-        message: notificationMessage,
-        timestamp: new Date(),
-        read: false,
-        recipients: notificationRecipients, // Notificação para todos os escalados
-        criadoPor: currentUser.uid, // Quem gerou a notificação
-      });
-
+      // Cria uma notificação individual para cada usuário escalado
+      for (const ministroEscalado of ministrosEscalados) {
+        await addDoc(collection(db, 'igrejas', userChurchId, 'usuarios', ministroEscalado.userId, 'notificacoes'), {
+          type: 'scale_created',
+          igrejaId: userChurchId,
+          escalaId: newEscalaRef.id,
+          escalaDate: dataCulto,
+          eventType: 'created',
+          message: notificationMessage,
+          timestamp: new Date(),
+          read: false,
+          recipientId: ministroEscalado.userId,
+          criadoPor: currentUser.uid,
+        });
+      }
 
       Alert.alert('Sucesso', 'Escala criada com sucesso!');
       setDataCulto('');
@@ -460,7 +448,6 @@ export default function CriarEscalas({ navigation }) {
   return (
     <>
       <ScrollView contentContainerStyle={styles.container}>
-        {/* Input de Data do Culto */}
         <Text style={styles.sectionTitle}>Data do Culto</Text>
         <TouchableOpacity
           onPress={() => setShowDatePickerCulto(true)}
@@ -489,11 +476,9 @@ export default function CriarEscalas({ navigation }) {
           />
         )}
         {Platform.OS === 'web' && showDatePickerCulto && (
-           null
+            null
         )}
 
-
-        {/* Marcar Ensaio + Toggle */}
         <View style={styles.toggleContainer}>
           <Text style={styles.toggleLabel}>Marcar ensaio</Text>
           <Switch
@@ -505,7 +490,6 @@ export default function CriarEscalas({ navigation }) {
           />
         </View>
 
-        {/* Inputs de Data e Hora do Ensaio (condicional) */}
         {marcarEnsaio && (
           <View>
             <Text style={styles.sectionTitle}>Data do Ensaio</Text>
@@ -564,10 +548,9 @@ export default function CriarEscalas({ navigation }) {
           </View>
         )}
 
-        {/* Título Músicos */}
         <Text style={styles.sectionTitle}>Músicos</Text>
         <View style={styles.cantoresContainer}>
-          {ministrosEscalados.map(escalado => { // Iterar sobre objetos {userId, roles}
+          {ministrosEscalados.map(escalado => {
             const ministro = ministros.find(m => m.id === escalado.userId);
             if (!ministro) return null;
 
@@ -575,7 +558,7 @@ export default function CriarEscalas({ navigation }) {
 
             return (
               <View key={escalado.userId} style={styles.cantorBox}>
-                {!isCreator && ( // Só mostra o botão de remover se não for o criador
+                {!isCreator && (
                   <TouchableOpacity
                     style={styles.removeButton}
                     onPress={() => toggleMinistroEscalado(escalado.userId)}
@@ -594,11 +577,9 @@ export default function CriarEscalas({ navigation }) {
                   </View>
                 )}
                 <Text style={styles.nomeCantor}>{ministro.nome}</Text>
-                {/* Exibir as roles selecionadas */}
                 {escalado.roles && escalado.roles.length > 0 && (
                   <Text style={styles.subtituloCantor}>{escalado.roles.join(', ')}</Text>
                 )}
-                {/* Botão para editar roles */}
                 <TouchableOpacity onPress={() => openMinistroRolesModal(escalado.userId)} style={styles.editRoleButton}>
                   <Ionicons name="create-outline" size={16} color="#003D29" />
                 </TouchableOpacity>
@@ -614,7 +595,6 @@ export default function CriarEscalas({ navigation }) {
           </TouchableOpacity>
         </View>
 
-        {/* Título Louvores */}
         <Text style={styles.sectionTitle}>Louvores</Text>
         <TouchableOpacity
           style={styles.pickerInputSimulated}
@@ -623,7 +603,6 @@ export default function CriarEscalas({ navigation }) {
           <Text style={styles.pickerInputSimulatedText}>Selecione os louvores</Text>
         </TouchableOpacity>
 
-        {/* Lista de Músicas Selecionadas */}
         {musicasSelecionadas.map((musica, index) => {
           const embedUrl = getYouTubeEmbedUrl(musica.video);
           return (
@@ -707,12 +686,10 @@ export default function CriarEscalas({ navigation }) {
           );
         })}
 
-        {/* Botão Criar Escala */}
         <TouchableOpacity style={styles.button} onPress={criarEscala}>
           <Text style={styles.buttonText}>CRIAR ESCALA</Text>
         </TouchableOpacity>
 
-        {/* Modal para Adicionar Músicos (Geral) */}
         <Modal
           visible={modalMinistrosVisible}
           transparent
@@ -725,7 +702,6 @@ export default function CriarEscalas({ navigation }) {
           <View style={styles.modalContainer}>
             <View style={styles.modalContent}>
               <Text style={styles.modalTitle}>Adicionar Músicos</Text>
-              {/* INPUT DE BUSCA PARA MÚSICOS NO MODAL */}
               <TextInput
                 style={styles.input}
                 placeholder="Buscar por nome ou área..."
@@ -737,7 +713,6 @@ export default function CriarEscalas({ navigation }) {
                   <Text style={styles.noResultsText}>Nenhum usuário ativo disponível na sua igreja.</Text>
                 ) : (
                   filteredMinistros.map(m => {
-                    // Verificar se o ministro já está escalado
                     const isSelected = ministrosEscalados.some(me => me.userId === m.id);
                     return (
                       <TouchableOpacity
@@ -776,7 +751,6 @@ export default function CriarEscalas({ navigation }) {
           </View>
         </Modal>
 
-        {/* Modal para Seleção de Papéis/Instrumentos do Ministro */}
         <Modal
           visible={modalMinistroRolesVisible}
           transparent
@@ -813,7 +787,6 @@ export default function CriarEscalas({ navigation }) {
           </View>
         </Modal>
 
-        {/* Modal para Seleção de Músicas com Busca */}
         <Modal
           visible={modalMusicasVisible}
           transparent
@@ -864,7 +837,6 @@ export default function CriarEscalas({ navigation }) {
           </View>
         </Modal>
 
-        {/* Modal para Adicionar Cantores para uma Música Específica */}
         <Modal
           visible={modalCantoresMusicaVisible}
           transparent
@@ -888,7 +860,6 @@ export default function CriarEscalas({ navigation }) {
                   <Text style={styles.noResultsText}>Nenhum usuário ativo disponível na sua igreja.</Text>
                 ) : (
                   filteredMinistros.map(m => {
-                    // Verificar se o ministro já foi adicionado como cantor para esta música
                     const isSelected = getCantoresSelecionadosParaMusica(currentMusicIndexForSingers).includes(m.id);
                     return (
                       <TouchableOpacity

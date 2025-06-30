@@ -11,8 +11,10 @@ import CadastroMembro from './screens/Cadastro/CadastroMembro';
 // Importando telas de login e home
 import Login from './screens/Auth/Login';
 import Home from './screens/Home';
-import Perfil from './screens/Perfil';
 import Notificacoes from './screens/Notificacoes/Notificacoes';
+
+// Importando a tela de Perfil
+import MinhaConta from './screens/MinhaConta/MinhaConta';
 
 // Importando a tela de Adicionar Músicas
 import AdicionarMusica from './screens/Musicas/AdicionarMusica';
@@ -41,18 +43,20 @@ export default function App() {
           <Stack.Screen name="Pagamento" component={Pagamento} options={{ title: 'Detalhes de Pagamento' }} />
 
           {/* Após login */}
-          <Stack.Screen name="Home" component={Home} options={{ title: 'Bem-vindo' }} />
+          <Stack.Screen name="Home" component={Home} options={{ headerShown: false }} />
           <Stack.Screen name="Escalas" component={Escalas} />
           <Stack.Screen name="CriarEscalas" component={CriarEscalas} />
           <Stack.Screen name="Musicas" component={Musicas} />
           <Stack.Screen name="EditarMusica" component={EditarMusica} />
           <Stack.Screen name="AdicionarMusica" component={AdicionarMusica} />
-          <Stack.Screen name="MusicaDetalhes" component={Detalhes} options={{ headerShown: false }} />
+          <Stack.Screen name="MusicaDetalhes" component={Detalhes} options={{ title: 'Detalhes da Música'  }} />
           <Stack.Screen name="EscalaDetalhes" component={EscalaDetalhes} options={{ title: 'Detalhes da Escala' }} />
           <Stack.Screen name="Notificacoes" component={Notificacoes} options={{ title: 'Notificações' }} />
+
+          {/* Tela de Perfil */}
+          <Stack.Screen name="MinhaConta" component={MinhaConta} options={{ title: 'Minha Conta' }} />
           
           {/* Perfil e Membros */}
-          <Stack.Screen name="Perfil" component={Perfil} />
           <Stack.Screen name="Membros" component={CadastroMembro} />
         </Stack.Navigator>
       </NavigationContainer>

@@ -7,24 +7,25 @@ import {
   Image,
   TouchableOpacity,
   Linking,
-  ActivityIndicator, // Added for loading state
-  Alert,             // Added for error alerts
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { doc, getDoc, collection, getDocs, query, where } from 'firebase/firestore'; // Added query, where
+import { doc, getDoc, collection, getDocs, deleteDoc } from 'firebase/firestore'; // Importado deleteDoc
 import { WebView } from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
-import { db } from '../../services/firebase'; // Ensure 'auth' is not imported if not used
+import { db, auth } from '../../services/firebase'; // Importado auth para currentUser
 import BottomTab from '../../components/BottomTab';
+import styles from './EscalaDetalhes.styles';
 
 export default function EscalaDetalhes() {
   const route = useRoute();
   const navigation = useNavigation();
-  const { escala } = route.params; // escala object should now contain igrejaId
+  const { escala } = route.params;
 
-  const [ministrosDetalhes, setMinistrosDetalhes] = useState([]); // Stores full details of all users in the church
-  const [escaladosComDetalhes, setEscaladosComDetalhes] = useState([]); // Stores full details of only the *escaled* users
-  const [ministroResponsavelDetalhes, setMinistroResponsavelDetalhes] = useState(null);
+  const [escalaDetalhesCompletos, setEscalaDetalhesCompletos] = useState(null);
+  const [ministrosDetalhes, setMinistrosDetalhes] = useState([]);
+  const [currentUserProfile, setCurrentUserProfile] = useState(null); // NOVO: Perfil do usuário logado
   const [loading, setLoading] = useState(true);
   const [telaErro, setTelaErro] = useState('');
 
@@ -33,7 +34,13 @@ export default function EscalaDetalhes() {
       setLoading(true);
       setTelaErro('');
 
-      // Ensure that 'escala' and 'escala.igrejaId' are available
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        setTelaErro('Usuário não autenticado.');
+        setLoading(false);
+        return;
+      }
+
       if (!escala || !escala.id || !escala.igrejaId) {
         setTelaErro('Dados da escala ou ID da igreja ausentes.');
         setLoading(false);
@@ -43,26 +50,41 @@ export default function EscalaDetalhes() {
       try {
         const igrejaId = escala.igrejaId;
 
-        // 1. Fetch ALL users (ministros) for the current church
-        // This is efficient because it's a single query to get all potential members
+        // 1. BUSCAR O PERFIL DO USUÁRIO LOGADO
+        const currentUserDocRef = doc(db, 'igrejas', igrejaId, 'usuarios', currentUser.uid);
+        const currentUserSnap = await getDoc(currentUserDocRef);
+        if (currentUserSnap.exists()) {
+          setCurrentUserProfile({ id: currentUserSnap.id, ...currentUserSnap.data() });
+        } else {
+          setTelaErro('Perfil do usuário logado não encontrado.');
+          setLoading(false);
+          return;
+        }
+
+        // 2. BUSCAR OS DETALHES COMPLETOS DA ESCALA
+        const escalaRef = doc(db, 'igrejas', igrejaId, 'escalas', escala.id);
+        const escalaSnap = await getDoc(escalaRef);
+
+        if (!escalaSnap.exists()) {
+          setTelaErro('Escala não encontrada.');
+          setLoading(false);
+          return;
+        }
+
+        const dadosEscala = escalaSnap.data();
+        setEscalaDetalhesCompletos({
+          id: escalaSnap.id,
+          ...dadosEscala,
+          // Converte Firestore Timestamps para Date objects (se eles forem armazenados como timestamps)
+          dataCulto: dadosEscala.dataCulto ? new Date(dadosEscala.dataCulto + 'T00:00:00') : null,
+          dataEnsaio: dadosEscala.dataEnsaio ? new Date(dadosEscala.dataEnsaio + 'T00:00:00') : null,
+        });
+
+        // 3. BUSCAR TODOS OS USUÁRIOS DA IGREJA para obter detalhes como foto e nome
         const usuariosRef = collection(db, 'igrejas', igrejaId, 'usuarios');
         const usuariosSnap = await getDocs(usuariosRef);
         const todosUsuariosDaIgreja = usuariosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setMinistrosDetalhes(todosUsuariosDaIgreja); // Store all users for future lookups
-
-        // 2. Identify the responsible minister (criadoPor)
-        const responsavel = todosUsuariosDaIgreja.find(m => m.id === escala.criadoPor);
-        if (responsavel) {
-          setMinistroResponsavelDetalhes(responsavel);
-        } else {
-          console.warn('Ministro responsável não encontrado para ID:', escala.criadoPor);
-          // You might want to display a fallback name or omit this section
-        }
-
-        // 3. Get full details for the 'usuariosEscalados'
-        const escaladosIds = escala.usuariosEscalados || [];
-        const filteredEscalados = todosUsuariosDaIgreja.filter(m => escaladosIds.includes(m.id));
-        setEscaladosComDetalhes(filteredEscalados);
+        setMinistrosDetalhes(todosUsuariosDaIgreja);
 
       } catch (error) {
         console.error('Erro ao carregar detalhes da escala:', error);
@@ -73,22 +95,80 @@ export default function EscalaDetalhes() {
     };
 
     carregarDetalhes();
-  }, [escala]); // Re-run effect if 'escala' object changes (e.g., navigation updates it)
+  }, [escala]);
 
-  // Corrigido para incluir sobrenome nas iniciais
+  const getMinistroById = (id) => {
+    return ministrosDetalhes.find(m => m.id === id);
+  };
+
   const getIniciais = (nome = '', sobrenome = '') => {
     const nomes = nome.trim().split(' ');
     const primeiraLetra = nomes[0]?.[0]?.toUpperCase() || '';
-    const segundaLetra = nomes.length > 1 ? nomes[1]?.[0]?.toUpperCase() || '' : sobrenome?.[0]?.toUpperCase() || '';
-    return primeiraLetra + segundaLetra;
+    const segundaLetra = nomes.length > 1 ? nomes[nomes.length - 1]?.[0]?.toUpperCase() || '' : sobrenome?.[0]?.toUpperCase() || '';
+    return (primeiraLetra + segundaLetra).substring(0,2);
   };
 
   const getYouTubeEmbedUrl = url => {
-    // A more robust regex for YouTube video IDs
     const regExp = /(?:https?:\/\/)?(?:www\.)?(?:m\.)?(?:youtube\.com|youtu\.be)\/(?:watch\?v=|embed\/|v\/|)([\w-]{11})(?:\S+)?/i;
     const match = url.match(regExp);
-    return match ? `https://www.youtube.com/embed/${match[1]}?modestbranding=1&rel=0` : null; // Changed to https and added modestbranding/rel for better embed behavior
+    return match ? `https://www.youtube.com/embed/${match[1]}?modestbranding=1&rel=0` : null;
   };
+
+  // NOVO: Funções para Editar/Cancelar
+  const handleEditScale = () => {
+    if (escalaDetalhesCompletos) {
+      // Navegar para a tela de edição, passando os dados completos da escala
+      // Você precisará ter uma tela 'EditarEscala' (ou similar) configurada na navegação
+      navigation.navigate('EditarEscala', { escala: escalaDetalhesCompletos });
+    }
+  };
+
+  const handleCancelScale = () => {
+    Alert.alert(
+      "Cancelar Escala",
+      "Tem certeza que deseja cancelar esta escala? Esta ação é irreversível.",
+      [
+        { text: "Não", style: "cancel" },
+        {
+          text: "Sim",
+          onPress: async () => {
+            if (!escalaDetalhesCompletos || !currentUserProfile) {
+              Alert.alert('Erro', 'Dados insuficientes para cancelar a escala.');
+              return;
+            }
+            try {
+              const escalaRef = doc(db, 'igrejas', escalaDetalhesCompletos.igrejaId, 'escalas', escalaDetalhesCompletos.id);
+              await deleteDoc(escalaRef);
+
+              // Opcional: Enviar uma notificação para os usuários escalados informando o cancelamento
+              const notificationMessage = `A escala para ${escalaDetalhesCompletos.dataCulto?.toLocaleDateString('pt-BR')} foi cancelada.`;
+              for (const escalado of escalaDetalhesCompletos.usuariosEscalados) {
+                await addDoc(collection(db, 'igrejas', escalaDetalhesCompletos.igrejaId, 'usuarios', escalado.userId, 'notificacoes'), {
+                  type: 'scale_cancelled',
+                  igrejaId: escalaDetalhesCompletos.igrejaId,
+                  escalaId: escalaDetalhesCompletos.id,
+                  escalaDate: escalaDetalhesCompletos.dataCulto?.toISOString().split('T')[0],
+                  eventType: 'cancelled',
+                  message: notificationMessage,
+                  timestamp: new Date(),
+                  read: false,
+                  recipientId: escalado.userId,
+                  criadoPor: auth.currentUser.uid,
+                });
+              }
+
+              Alert.alert("Sucesso", "Escala cancelada com sucesso!");
+              navigation.goBack(); // Volta para a tela anterior (Home ou Lista de Escalas)
+            } catch (e) {
+              console.error("Erro ao cancelar escala:", e);
+              Alert.alert("Erro", `Não foi possível cancelar a escala. ${e.message}`);
+            }
+          },
+        },
+      ]
+    );
+  };
+
 
   if (loading) {
     return (
@@ -110,27 +190,47 @@ export default function EscalaDetalhes() {
     );
   }
 
-  // Format dataCulto for display
-  const dataCultoFormatada = escala.dataCulto instanceof Date
-    ? escala.dataCulto.toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+  if (!escalaDetalhesCompletos) {
+    return (
+      <View style={styles.errorContainer}>
+        <Text style={styles.errorText}>Não foi possível carregar os detalhes da escala.</Text>
+        <TouchableOpacity style={styles.button} onPress={() => navigation.goBack()}>
+          <Text style={styles.buttonText}>Voltar</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  const dataCultoFormatada = escalaDetalhesCompletos.dataCulto
+    ? escalaDetalhesCompletos.dataCulto.toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
     : 'Data desconhecida';
+
+  const dataEnsaioFormatada = escalaDetalhesCompletos.ensaio && escalaDetalhesCompletos.dataEnsaio && escalaDetalhesCompletos.horaEnsaio
+    ? `${escalaDetalhesCompletos.dataEnsaio.toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} às ${escalaDetalhesCompletos.horaEnsaio}`
+    : null;
+
+  const ministroResponsavel = getMinistroById(escalaDetalhesCompletos.criadoPor);
+
+  // Verificações de permissão
+  const isCreator = auth.currentUser?.uid === escalaDetalhesCompletos.criadoPor;
+  const canManage = currentUserProfile?.isLider || isCreator; // Pode editar/cancelar se for líder OU o criador
 
   return (
     <>
       <ScrollView contentContainerStyle={styles.container}>
         {/* Ministro responsável */}
-        {ministroResponsavelDetalhes && (
+        {ministroResponsavel && (
           <View style={styles.responsavelContainer}>
-            {ministroResponsavelDetalhes.foto ? ( // Usando 'foto'
-              <Image source={{ uri: ministroResponsavelDetalhes.foto }} style={styles.responsavelFoto} />
+            {ministroResponsavel.foto ? (
+              <Image source={{ uri: ministroResponsavel.foto }} style={styles.responsavelFoto} />
             ) : (
               <View style={[styles.responsavelFoto, styles.iniciaisBox]}>
-                <Text style={styles.iniciais}>{getIniciais(ministroResponsavelDetalhes.nome, ministroResponsavelDetalhes.sobrenome)}</Text>
+                <Text style={styles.iniciais}>{getIniciais(ministroResponsavel.nome, ministroResponsavel.sobrenome)}</Text>
               </View>
             )}
             <View>
               <Text style={styles.responsavelTitulo}>Escala criada por</Text>
-              <Text style={styles.responsavelNome}>{ministroResponsavelDetalhes.nome}</Text>
+              <Text style={styles.responsavelNome}>{ministroResponsavel.nome}</Text>
             </View>
           </View>
         )}
@@ -141,38 +241,45 @@ export default function EscalaDetalhes() {
         {/* Ministros Escalados */}
         <Text style={styles.sectionTitle}>Equipe Escalada</Text>
         <View style={styles.ministrosGrid}>
-          {escaladosComDetalhes.length > 0 ? (
-            escaladosComDetalhes.map(m => (
-              <View key={m.id} style={styles.ministroItem}>
-                {m.foto ? ( // Usando 'foto'
-                  <Image source={{ uri: m.foto }} style={styles.fotoMinistro} />
-                ) : (
-                  <View style={[styles.iniciaisBox, styles.fotoMinistro]}>
-                    <Text style={styles.iniciais}>{getIniciais(m.nome, m.sobrenome)}</Text>
-                  </View>
-                )}
-                <Text style={styles.nomeMinistro}>{m.nome}</Text>
-                <Text style={styles.cargoMinistro}>{m.area}</Text>
-              </View>
-            ))
+          {escalaDetalhesCompletos.usuariosEscalados?.length > 0 ? (
+            escalaDetalhesCompletos.usuariosEscalados.map(escalado => {
+              const ministro = getMinistroById(escalado.userId);
+              if (!ministro) return null;
+
+              return (
+                <View key={escalado.userId} style={styles.ministroItem}>
+                  {ministro.foto ? (
+                    <Image source={{ uri: ministro.foto }} style={styles.fotoMinistro} />
+                  ) : (
+                    <View style={[styles.iniciaisBox, styles.fotoMinistro]}>
+                      <Text style={styles.iniciais}>{getIniciais(ministro.nome, ministro.sobrenome)}</Text>
+                    </View>
+                  )}
+                  <Text style={styles.nomeMinistro}>{ministro.nome}</Text>
+                  {escalado.roles && escalado.roles.length > 0 && (
+                    <Text style={styles.cargoMinistro}>{escalado.roles.join(', ')}</Text>
+                  )}
+                </View>
+              );
+            })
           ) : (
             <Text style={styles.emptyText}>Nenhum músico escalado.</Text>
           )}
         </View>
 
         {/* Ensaio */}
-        {escala.ensaio && escala.dataEnsaio && escala.horaEnsaio && (
+        {dataEnsaioFormatada && (
           <View style={styles.ensaioBox}>
             <Text style={styles.ensaioTexto}>
-              Ensaio: {escala.dataEnsaio} às {escala.horaEnsaio}
+              Ensaio: {dataEnsaioFormatada}
             </Text>
           </View>
         )}
 
         {/* Louvores */}
         <Text style={styles.sectionTitle}>Louvores</Text>
-        {escala.musicas?.length > 0 ? (
-          escala.musicas.map((musica, index) => {
+        {escalaDetalhesCompletos.musicas?.length > 0 ? (
+          escalaDetalhesCompletos.musicas.map((musica, index) => {
             const embedUrl = getYouTubeEmbedUrl(musica.video);
             return (
               <View key={index} style={styles.cardMusica}>
@@ -191,12 +298,12 @@ export default function EscalaDetalhes() {
                     <Text style={styles.vozesTitulo}>Na voz de:</Text>
                     <View style={styles.vozesFotos}>
                       {musica.cantores.map((cantorId) => {
-                        const ministro = ministrosDetalhes.find(m => m.id === cantorId); // Look up from all church users
+                        const ministro = getMinistroById(cantorId);
                         if (!ministro) return null;
 
                         return (
                           <View key={cantorId} style={styles.vozItem}>
-                            {ministro.foto ? ( // Usando 'foto'
+                            {ministro.foto ? (
                               <Image source={{ uri: ministro.foto }} style={styles.vozFoto} />
                             ) : (
                               <View style={[styles.iniciaisBoxVoz, styles.iniciaisBox]}>
@@ -240,248 +347,24 @@ export default function EscalaDetalhes() {
         ) : (
           <Text style={styles.emptyText}>Nenhum louvor cadastrado para esta escala.</Text>
         )}
+
+        
+        {/* Botões de Ação (Editar/Cancelar) - Visíveis apenas para o criador ou líder */}
+        {canManage && (
+          <View style={styles.actionButtonsRow}>
+            <TouchableOpacity style={styles.editButton} onPress={handleEditScale}>
+              <Ionicons name="create-outline" size={20} color="#fff" />
+              <Text style={styles.buttonText}>Editar</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.cancelButton} onPress={handleCancelScale}>
+              <Ionicons name="trash-outline" size={20} color="#fff" />
+              <Text style={styles.buttonText}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
       </ScrollView>
       <BottomTab />
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    backgroundColor: '#fff',
-    padding: 20,
-    paddingBottom: 60,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#F5F6FA',
-  },
-  loadingText: {
-    marginTop: 10,
-    fontSize: 16,
-    color: '#003D29',
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-    backgroundColor: '#F5F6FA',
-  },
-  errorText: {
-    textAlign: 'center',
-    color: 'red',
-    fontSize: 16,
-    marginBottom: 20,
-  },
-  button: {
-    backgroundColor: '#6ACF9E',
-    paddingVertical: 14,
-    borderRadius: 10,
-    alignItems: 'center',
-    marginTop: 30,
-    marginBottom: 20,
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.23,
-    shadowRadius: 2.62,
-    width: '80%',
-  },
-  buttonText: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: 'bold',
-    letterSpacing: 1,
-  },
-  backIcon: {
-    color: '#1F2937',
-    marginBottom: 10,
-  },
-  responsavelContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F3F4F6',
-    borderRadius: 30,
-    padding: 10,
-    marginBottom: 20,
-  },
-  responsavelFoto: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    marginRight: 10,
-  },
-  responsavelTitulo: {
-    fontSize: 12,
-    color: '#6B7280',
-  },
-  responsavelNome: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  dataCulto: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#111827',
-    marginBottom: 10,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#111827',
-    marginTop: 15,
-    marginBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-    paddingBottom: 5,
-  },
-  ministrosGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 16,
-    justifyContent: 'flex-start', // Align items to the start
-  },
-  ministroItem: {
-    width: '28%', // Adjust width to fit 3 items per row with gap
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  fotoMinistro: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    borderWidth: 2,
-    borderColor: '#10B981',
-    marginBottom: 6,
-  },
-  iniciaisBox: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#ccc',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  iniciais: {
-    fontSize: 18,
-    color: '#fff',
-    fontWeight: 'bold',
-  },
-  nomeMinistro: {
-    fontWeight: '600',
-    fontSize: 13,
-    color: '#111827',
-    textAlign: 'center',
-  },
-  cargoMinistro: {
-    fontSize: 12,
-    color: '#6B7280',
-    textAlign: 'center',
-  },
-  ensaioBox: {
-    backgroundColor: '#A7F3D0',
-    padding: 12,
-    borderRadius: 10,
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  ensaioTexto: {
-    fontWeight: 'bold',
-    color: '#065F46',
-    fontSize: 16,
-  },
-  cardMusica: {
-    backgroundColor: '#F9FAFB',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 24,
-  },
-  headerMusica: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  nomeMusica: {
-    fontWeight: 'bold',
-    fontSize: 16,
-    color: '#111827',
-    flexShrink: 1, // Allow text to shrink
-  },
-  tomBox: {
-    backgroundColor: '#6EE7B7',
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    marginLeft: 10, // Add some margin to separate from name
-  },
-  tomTexto: {
-    fontWeight: 'bold',
-    color: '#065F46',
-    fontSize: 13,
-  },
-  videoContainer: {
-    height: 200,
-    borderRadius: 12,
-    overflow: 'hidden',
-    marginBottom: 10,
-  },
-  webview: {
-    flex: 1,
-  },
-  botaoCifra: {
-    backgroundColor: '#1F2937',
-    borderRadius: 8,
-    paddingVertical: 10,
-    alignItems: 'center',
-  },
-  textoCifra: {
-    color: '#fff',
-    fontWeight: '600',
-  },
-  vozesContainer: {
-    marginTop: 10,
-    marginBottom: 15, // Added margin for spacing
-  },
-  vozesTitulo: {
-    fontWeight: '600',
-    color: '#444',
-    marginBottom: 8,
-  },
-  vozesFotos: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12, // Use gap for spacing instead of marginRight
-  },
-  vozItem: {
-    alignItems: 'center',
-    // Removed marginRight as gap handles it
-  },
-  vozFoto: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    marginBottom: 4,
-  },
-  iniciaisBoxVoz: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#ccc',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  nomeVoz: {
-    fontSize: 12,
-    marginTop: 4,
-    // Removed fixed marginBottom: 30, it can push next elements down unnecessarily
-    textAlign: 'center',
-    color: '#374151',
-  }
-});

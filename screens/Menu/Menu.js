@@ -1,14 +1,13 @@
-// components/Menu/Menu.js
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, TouchableOpacity, Image, Alert, ActivityIndicator, Modal } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Ionicons, Feather, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 import { auth, db } from '../../services/firebase';
 import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
-import  styles  from './Menu.styles';
+import styles from './Menu.styles';
 
-export default function Menu({ isVisible, onClose }) { // Recebe isVisible e onClose para controlar o Modal
+export default function Menu({ isVisible, onClose }) {
   const navigation = useNavigation();
   const [userProfile, setUserProfile] = useState(null);
   const [churchLogoUrl, setChurchLogoUrl] = useState(null);
@@ -16,8 +15,7 @@ export default function Menu({ isVisible, onClose }) { // Recebe isVisible e onC
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [errorProfile, setErrorProfile] = useState('');
 
-  // Função para buscar dados do usuário, igreja e contagem de notificações
-  const fetchMenuData = async () => {
+  const fetchMenuData = useCallback(async () => {
     setLoadingProfile(true);
     setErrorProfile('');
     const currentUser = auth.currentUser;
@@ -32,7 +30,7 @@ export default function Menu({ isVisible, onClose }) { // Recebe isVisible e onC
       let userDocData = null;
       let igrejaId = null;
 
-      // 1. Tentar encontrar o perfil do usuário em alguma igreja
+      // 1. Encontra a igreja e o perfil do usuário logado
       const igrejasSnapshot = await getDocs(collection(db, 'igrejas'));
       for (const docIgreja of igrejasSnapshot.docs) {
         const usuarioDocRef = doc(db, 'igrejas', docIgreja.id, 'usuarios', currentUser.uid);
@@ -52,24 +50,16 @@ export default function Menu({ isVisible, onClose }) { // Recebe isVisible e onC
 
       setUserProfile(userDocData);
 
-      // 2. Buscar logo da igreja
+      // 2. Busca o logo da igreja
       const igrejaDocRef = doc(db, 'igrejas', igrejaId);
       const igrejaDocSnap = await getDoc(igrejaDocRef);
-      if (igrejaDocSnap.exists() && igrejaDocSnap.data().logoURL) {
-        setChurchLogoUrl(igrejaDocSnap.data().logoURL);
-      } else {
-        setChurchLogoUrl(null); // Sem logo ou não encontrado
-      }
+      setChurchLogoUrl(igrejaDocSnap.exists() && igrejaDocSnap.data().logoURL ? igrejaDocSnap.data().logoURL : null);
 
-      // 3. Contar notificações não lidas
-      // Notificações para o usuário logado que não foram lidas
-      const notificationsRef = collection(db, 'igrejas', igrejaId, 'notificacoes');
+      // 3. ATUALIZAÇÃO: Busca notificações não lidas da nova localização
+      const notificationsRef = collection(db, 'igrejas', igrejaId, 'usuarios', currentUser.uid, 'notificacoes');
       const qNotifications = query(
         notificationsRef,
-        where('read', '==', false),
-        where('targetUserId', '==', currentUser.uid) // Notificações diretas para ele
-        // Se usar 'recipients' array, precisaria de uma query 'array-contains'
-        // where('recipients', 'array-contains', currentUser.uid)
+        where('read', '==', false)
       );
       const notificationsSnap = await getDocs(qNotifications);
       setUnreadNotificationsCount(notificationsSnap.size);
@@ -80,44 +70,39 @@ export default function Menu({ isVisible, onClose }) { // Recebe isVisible e onC
     } finally {
       setLoadingProfile(false);
     }
-  };
+  }, []);
 
-  // Use useFocusEffect para recarregar dados quando o menu é focado (aberto)
   useFocusEffect(
     React.useCallback(() => {
-      if (isVisible) { // Apenas busca dados se o menu estiver visível
+      // Garante que os dados do menu são recarregados sempre que a tela de Home (que renderiza o Menu) ganha foco
+      // E também apenas quando o menu está visível, para evitar buscas desnecessárias.
+      if (isVisible) {
         fetchMenuData();
       }
-    }, [isVisible]) // Recarrega sempre que a visibilidade do menu mudar
+    }, [isVisible, fetchMenuData])
   );
 
   const handleLogout = async () => {
     try {
       await signOut(auth);
       Alert.alert('Sair', 'Você foi desconectado.');
-      navigation.replace('Login'); // Redireciona para a tela de Login
+      navigation.replace('Login');
     } catch (error) {
       Alert.alert('Erro ao sair', error.message);
       console.error('Erro ao fazer logout:', error);
     }
   };
 
-  // Helper para gerar iniciais se não houver foto
   const getInitials = (firstName = '', lastName = '') => {
     const firstInitial = firstName.charAt(0)?.toUpperCase() || '';
     const lastInitial = lastName.charAt(0)?.toUpperCase() || '';
     return `${firstInitial}${lastInitial}`;
   };
 
-  if (!isVisible) return null; // Não renderiza nada se não estiver visível
+  if (!isVisible) return null;
 
   return (
-    <Modal
-      animationType="fade"
-      transparent={true}
-      visible={isVisible}
-      onRequestClose={onClose} // Permite fechar com o botão de voltar no Android
-    >
+    <Modal animationType="fade" transparent visible={isVisible} onRequestClose={onClose}>
       <View style={styles.overlay}>
         <View style={styles.menuContainer}>
           <TouchableOpacity onPress={onClose} style={styles.closeButtonContainer}>
@@ -130,7 +115,6 @@ export default function Menu({ isVisible, onClose }) { // Recebe isVisible e onC
             <Text style={styles.errorText}>{errorProfile}</Text>
           ) : userProfile ? (
             <>
-              {/* Seção de Perfil do Usuário */}
               <View style={styles.profileContainer}>
                 {userProfile.foto ? (
                   <Image source={{ uri: userProfile.foto }} style={styles.profileImage} />
@@ -149,18 +133,14 @@ export default function Menu({ isVisible, onClose }) { // Recebe isVisible e onC
                 </View>
               </View>
 
-              {/* Logo da Igreja */}
               {churchLogoUrl ? (
                 <View style={styles.churchLogoContainer}>
                   <Image source={{ uri: churchLogoUrl }} style={styles.churchLogo} />
                 </View>
               ) : (
-                 // Opcional: Mostrar nome da igreja se não houver logo
-                 userProfile.igrejaId && <Text style={styles.menuItemText}>{userProfile.igrejaNome || 'Sua Igreja'}</Text>
+                userProfile.igrejaId && <Text style={styles.menuItemText}>{userProfile.igrejaNome || 'Sua Igreja'}</Text>
               )}
 
-
-              {/* Itens do Menu de Navegação */}
               <TouchableOpacity style={styles.menuItem} onPress={() => { onClose(); navigation.navigate('MinhaConta'); }}>
                 <Feather name="user" size={20} color="#333" />
                 <Text style={styles.menuItemText}>Minha Conta</Text>
@@ -196,7 +176,6 @@ export default function Menu({ isVisible, onClose }) { // Recebe isVisible e onC
                 <Text style={styles.menuItemText}>Ajuda</Text>
               </TouchableOpacity>
 
-              {/* Botão Sair */}
               <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
                 <MaterialIcons name="logout" size={20} color="#dc3545" />
                 <Text style={styles.logoutButtonText}>Sair</Text>

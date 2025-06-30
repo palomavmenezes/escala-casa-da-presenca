@@ -1,19 +1,22 @@
 {
-  "name": "grupo-louvor-app",
+  "name": "praise-scale",
   "version": "1.0.0",
   "main": "node_modules/expo/AppEntry.js",
   "scripts": {
     "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
     "web": "expo start --web"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^1.24.0",
+    "@react-native-community/datetimepicker": "7.7.0",
     "@react-native-picker/picker": "^2.6.1",
     "@react-navigation/native": "^6.1.7",
     "@react-navigation/native-stack": "^6.10.2",
     "expo": "~50.0.0",
+    "expo-clipboard": "~5.0.1",
+    "expo-image-picker": "^16.1.4",
     "expo-status-bar": "~1.11.1",
     "firebase": "^10.12.0",
     "react": "18.2.0",
@@ -24,9 +27,7 @@
     "react-native-svg": "^15.12.0",
     "react-native-svg-transformer": "^1.5.1",
     "react-native-web": "~0.19.10",
-    "react-native-webview": "13.6.4",
-    "expo-clipboard": "~5.0.1",
-    "@react-native-community/datetimepicker": "7.7.0"
+    "react-native-webview": "13.6.4"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0"

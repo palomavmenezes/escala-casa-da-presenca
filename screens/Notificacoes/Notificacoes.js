@@ -1,4 +1,3 @@
-// screens/Notificacoes/Notificacoes.js
 import React, { useEffect, useState } from 'react';
 import {
   View,
@@ -31,7 +30,7 @@ export default function NotificacoesScreen() {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [telaErro, setTelaErro] = useState('');
-  const [currentUserProfile, setCurrentUserProfile] = useState(null);
+  const [currentUserProfile, setCurrentUserProfile] = useState(null); // Para verificar se é líder
 
   const ITEMS_PER_LOAD = 20;
 
@@ -50,6 +49,7 @@ export default function NotificacoesScreen() {
       let userProfile = null;
       let foundIgrejaId = null;
 
+      // Primeiro, encontra a igreja do usuário logado
       const igrejasSnapshot = await getDocs(collection(db, 'igrejas'));
       for (const docIgreja of igrejasSnapshot.docs) {
         const usuarioDocRef = doc(db, 'igrejas', docIgreja.id, 'usuarios', currentUser.uid);
@@ -67,51 +67,26 @@ export default function NotificacoesScreen() {
         return;
       }
 
-      setCurrentUserProfile(userProfile);
+      setCurrentUserProfile(userProfile); // Guarda o perfil para verificar se é líder
 
-      const notificationsRef = collection(db, 'igrejas', foundIgrejaId, 'notificacoes');
-      let allLoadedNotifications = [];
-
-      const qTargeted = query(
+      // AGORA, LÊ AS NOTIFICAÇÕES DIRETAMENTE DA SUBCOLEÇÃO DO USUÁRIO
+      const notificationsRef = collection(db, 'igrejas', foundIgrejaId, 'usuarios', currentUser.uid, 'notificacoes');
+      const q = query(
         notificationsRef,
-        where('igrejaId', '==', foundIgrejaId),
-        where('targetUserId', '==', currentUser.uid),
         orderBy('timestamp', 'desc'),
         limit(ITEMS_PER_LOAD)
       );
-      const snapshotTargeted = await getDocs(qTargeted);
-      snapshotTargeted.forEach(doc => {
-        allLoadedNotifications.push({
-          id: doc.id,
-          ...doc.data(),
-          read: !!doc.data().read,
-          timestamp: doc.data().timestamp?.toDate(),
-        });
-      });
+      const snapshot = await getDocs(q);
 
-      const qRecipients = query(
-        notificationsRef,
-        where('igrejaId', '==', foundIgrejaId),
-        where('recipients', 'array-contains', currentUser.uid),
-        orderBy('timestamp', 'desc'),
-        limit(ITEMS_PER_LOAD)
-      );
-      const snapshotRecipients = await getDocs(qRecipients);
-      snapshotRecipients.forEach(doc => {
-        allLoadedNotifications.push({
-          id: doc.id,
-          ...doc.data(),
-          read: !!doc.data().read,
-          timestamp: doc.data().timestamp?.toDate(),
-        });
-      });
+      const loadedNotifications = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        read: !!doc.data().read, // Garante que 'read' seja um booleano
+        timestamp: doc.data().timestamp?.toDate(), // Converte Firestore Timestamp para Date
+      }));
 
-      const uniqueNotifications = Array.from(
-        new Map(allLoadedNotifications.map(item => [item.id, item])).values()
-      );
-      uniqueNotifications.sort((a, b) => b.timestamp - a.timestamp);
+      setNotifications(loadedNotifications);
 
-      setNotifications(uniqueNotifications);
     } catch (error) {
       console.error('Erro ao buscar notificações:', error);
       setTelaErro('Erro ao carregar notificações. Verifique sua conexão e tente novamente.');
@@ -126,6 +101,8 @@ export default function NotificacoesScreen() {
     }, [])
   );
 
+  // A função handleApproveMember e handleDenyMember ainda precisam da referência correta da notificação
+  // que é o caminho dentro da subcoleção do usuário, não na raiz 'notificacoes' da igreja.
   const handleApproveMember = async (notificationId, memberId, memberEmail, igrejaId) => {
     Alert.alert(
       'Aprovar Membro',
@@ -139,7 +116,8 @@ export default function NotificacoesScreen() {
               const memberRef = doc(db, 'igrejas', igrejaId, 'usuarios', memberId);
               await updateDoc(memberRef, { aprovado: true });
 
-              const notificationRef = doc(db, 'igrejas', igrejaId, 'notificacoes', notificationId);
+              // AQUI MUDA: A notificação está na subcoleção do líder que a recebeu
+              const notificationRef = doc(db, 'igrejas', igrejaId, 'usuarios', auth.currentUser.uid, 'notificacoes', notificationId);
               await deleteDoc(notificationRef);
 
               Alert.alert('Sucesso', `${memberEmail} aprovado com sucesso!`);
@@ -167,7 +145,8 @@ export default function NotificacoesScreen() {
               const memberRef = doc(db, 'igrejas', igrejaId, 'usuarios', memberId);
               await updateDoc(memberRef, { aprovado: false });
 
-              const notificationRef = doc(db, 'igrejas', igrejaId, 'notificacoes', notificationId);
+              // AQUI MUDA: A notificação está na subcoleção do líder que a recebeu
+              const notificationRef = doc(db, 'igrejas', igrejaId, 'usuarios', auth.currentUser.uid, 'notificacoes', notificationId);
               await deleteDoc(notificationRef);
 
               Alert.alert('Sucesso', `${memberEmail} negado e acesso desativado.`);
@@ -184,7 +163,8 @@ export default function NotificacoesScreen() {
 
   const handleMarkAsRead = async (notificationId, igrejaId) => {
     try {
-      const notificationRef = doc(db, 'igrejas', igrejaId, 'notificacoes', notificationId);
+      // AQUI MUDA: A notificação está na subcoleção do usuário que a recebeu
+      const notificationRef = doc(db, 'igrejas', igrejaId, 'usuarios', auth.currentUser.uid, 'notificacoes', notificationId);
       await updateDoc(notificationRef, { read: true });
       fetchUserAndNotifications();
     } catch (e) {
@@ -207,6 +187,7 @@ export default function NotificacoesScreen() {
         <Text style={styles.notificationMessage}>{item.message}</Text>
         <Text style={styles.notificationTimestamp}>{timestampFormatted}</Text>
 
+        {/* Verificando se o tipo é de aprovação E se o usuário atual é líder */}
         {item.type === 'member_approval' && currentUserProfile?.isLider && (
           <View>
             <Text style={styles.notificationMeta}>Nome: {item.memberName}</Text>
@@ -241,9 +222,9 @@ export default function NotificacoesScreen() {
             </Text>
             <View style={styles.actionButtonsContainer}>
               <TouchableOpacity
-                style={[styles.actionButton, styles.viewButton]}
+              style={[styles.actionButton, styles.viewButton]}
                 onPress={() =>
-                  navigation.navigate('DetalhesEscala', {
+                  navigation.navigate('EscalaDetalhes', { // <--- MUDANÇA AQUI
                     escala: { id: item.escalaId, igrejaId: item.igrejaId },
                   })
                 }
@@ -284,14 +265,12 @@ export default function NotificacoesScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <><View style={styles.container}>
       <FlatList
         data={notifications}
         keyExtractor={(item) => item.id}
         renderItem={renderNotificationItem}
-        ListEmptyComponent={<Text style={styles.emptyText}>Nenhuma notificação encontrada.</Text>}
-      />
-      <BottomTab />
-    </View>
+        ListEmptyComponent={<Text style={styles.emptyText}>Nenhuma notificação encontrada.</Text>} />
+    </View><BottomTab /></>
   );
 }

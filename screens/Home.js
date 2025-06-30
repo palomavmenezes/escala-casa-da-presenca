@@ -1,37 +1,53 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking, ActivityIndicator, Alert } from 'react-native';
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  Linking,
+  ActivityIndicator,
+  Alert,
+} from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { auth, db } from '../services/firebase';
-import { signOut } from 'firebase/auth';
-import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
+import {
+  collection,
+  getDocs,
+  query,
+  where,
+  doc,
+  getDoc,
+  orderBy, // Certifique-se de importar orderBy
+  limit,   // Certifique-se de importar limit
+} from 'firebase/firestore';
 
 import Menu from './Menu/Menu';
-import styles from './Home.styles'; // Importa os estilos da Home
+import styles from './Home.styles';
 
 import BottomTab from '../components/BottomTab';
 import EscalaCard from '../components/Escalas/EscalaCard';
-import { Ionicons } from '@expo/vector-icons'; // Para o ícone de notificação e menu
+import { Ionicons } from '@expo/vector-icons';
 
 export default function Home() {
   const navigation = useNavigation();
   const route = useRoute();
 
-  const { userId, igrejaId, isLider, isMinisterForCults } = route.params || { userId: null, igrejaId: null, isLider: false, isMinisterForCults: false };
+  const { userId: paramUserId, igrejaId: paramIgrejaId, isLider = false, isMinisterForCults = false } = route.params || {};
 
   const [cultos, setCultos] = useState([]);
   const [isLoadingCultos, setIsLoadingCultos] = useState(true);
   const [errorCultos, setErrorCultos] = useState('');
-  const [userChurchIdState, setUserChurchIdState] = useState(igrejaId);
-  const [isMenuVisible, setIsMenuVisible] = useState(false); // Estado para controlar a visibilidade do menu
-  const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0); // Contagem de notificações não lidas
+  const [userChurchIdState, setUserChurchIdState] = useState(paramIgrejaId);
+  const [isMenuVisible, setIsMenuVisible] = useState(false);
+  const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
 
   useEffect(() => {
     const initializeHomeData = async () => {
       setIsLoadingCultos(true);
       setErrorCultos('');
 
-      let currentUserId = auth.currentUser?.uid;
-      let currentIgrejaId = igrejaId;
+      const currentUserId = auth.currentUser?.uid || paramUserId;
+      let currentIgrejaId = paramIgrejaId || userChurchIdState;
 
       if (!currentUserId) {
         setErrorCultos('Usuário não autenticado. Por favor, faça login novamente.');
@@ -41,36 +57,42 @@ export default function Home() {
       }
 
       if (!currentIgrejaId) {
-        let foundIgrejaId = null;
-        const igrejasSnapshot = await getDocs(collection(db, 'igrejas'));
+        try {
+          const igrejasSnapshot = await getDocs(collection(db, 'igrejas'));
 
-        for (const docIgreja of igrejasSnapshot.docs) {
-          const usuarioDocRef = doc(db, 'igrejas', docIgreja.id, 'usuarios', currentUserId);
-          const usuarioDocSnap = await getDoc(usuarioDocRef);
+          let foundIgrejaId = null;
+          for (const docIgreja of igrejasSnapshot.docs) {
+            const usuarioDocRef = doc(db, 'igrejas', docIgreja.id, 'usuarios', currentUserId);
+            const usuarioDocSnap = await getDoc(usuarioDocRef);
 
-          if (usuarioDocSnap.exists()) {
-            foundIgrejaId = docIgreja.id;
-            break;
+            if (usuarioDocSnap.exists()) {
+              foundIgrejaId = docIgreja.id;
+              break;
+            }
           }
-        }
 
-        if (foundIgrejaId) {
-          currentIgrejaId = foundIgrejaId;
-          setUserChurchIdState(foundIgrejaId);
-        } else {
-          setErrorCultos('Não foi possível encontrar a igreja associada ao seu usuário. Faça login novamente.');
+          if (foundIgrejaId) {
+            currentIgrejaId = foundIgrejaId;
+            setUserChurchIdState(foundIgrejaId);
+          } else {
+            setErrorCultos('Não foi possível encontrar a igreja associada ao seu usuário. Faça login novamente.');
+            setIsLoadingCultos(false);
+            return;
+          }
+        } catch (error) {
+          setErrorCultos('Erro ao buscar dados da igreja. Verifique sua conexão.');
           setIsLoadingCultos(false);
           return;
         }
       }
 
       if (currentUserId && currentIgrejaId) {
-        buscarCultos(currentUserId, currentIgrejaId);
-        fetchUnreadNotificationsCount(currentIgrejaId, currentUserId); // Busca a contagem de notificações
+        await buscarCultos(currentUserId, currentIgrejaId);
+        await fetchUnreadNotificationsCount(currentIgrejaId, currentUserId);
       } else {
-        setIsLoadingCultos(false);
-        setErrorCultos('Erro crítico: dados de usuário ou igreja incompletos após tentativa de busca.');
+        setErrorCultos('Erro crítico: dados incompletos após tentativa de busca.');
       }
+      setIsLoadingCultos(false);
     };
 
     initializeHomeData();
@@ -86,52 +108,86 @@ export default function Home() {
   };
 
   const buscarCultos = async (currentUserId, currentIgrejaId) => {
-    setIsLoadingCultos(true);
-    setErrorCultos('');
     try {
       const escalasRef = collection(db, 'igrejas', currentIgrejaId, 'escalas');
-      const q = query(escalasRef, where('usuariosEscalados', 'array-contains', currentUserId));
-      const querySnapshot = await getDocs(q);
-
       const hoje = new Date();
-      const dadosCultos = querySnapshot.docs.map(doc => {
+      hoje.setHours(0, 0, 0, 0); // Define para o início do dia atual, ignorando a hora
+
+      // --- PRIMEIRA CONSULTA: Escalas onde o usuário é o 'criadoPor' ---
+      const qCriador = query(
+        escalasRef,
+        where('criadoPor', '==', currentUserId),
+        where('dataCulto', '>=', hoje.toISOString().split('T')[0]), // Compara com string 'AAAA-MM-DD'
+        orderBy('dataCulto', 'asc')
+      );
+      const snapshotCriador = await getDocs(qCriador);
+
+      let allFutureScales = [];
+
+      snapshotCriador.forEach(doc => {
         const data = doc.data();
-        return {
+        allFutureScales.push({
           id: doc.id,
           ...data,
-          dataCulto: new Date(data.dataCulto + 'T00:00:00'),
+          dataCulto: new Date(data.dataCulto + 'T00:00:00'), // Converte para Date object
           igrejaId: currentIgrejaId,
-        };
+        });
       });
 
-      const futuros = dadosCultos
-        .filter(c => {
-          return !isNaN(c.dataCulto.getTime()) && c.dataCulto >= hoje;
-        })
-        .sort((a, b) => a.dataCulto.getTime() - b.dataCulto.getTime());
+      // --- SEGUNDA CONSULTA: Buscar TODAS as escalas futuras e filtrar no frontend ---
+      // Esta abordagem é necessária porque 'array-contains' em objetos ({userId, roles})
+      // não permite buscar apenas pelo 'userId' dentro do objeto de forma flexível no Firestore.
+      // E o Firestore não suporta queries OR diretas para múltiplos campos.
+      const qAllFuture = query(
+        escalasRef,
+        where('dataCulto', '>=', hoje.toISOString().split('T')[0]),
+        orderBy('dataCulto', 'asc')
+      );
+      const snapshotAllFuture = await getDocs(qAllFuture);
 
-      setCultos(futuros);
+      snapshotAllFuture.forEach(doc => {
+        const data = doc.data();
+        // Verifica se o usuário atual está em 'usuariosEscalados' por userId
+        const isUserInvolvedAsEscalado = data.usuariosEscalados?.some(
+          escalado => escalado.userId === currentUserId
+        );
+        const isAlreadyAdded = allFutureScales.some(s => s.id === doc.id); // Evita duplicatas de escalas
+
+        if (isUserInvolvedAsEscalado && !isAlreadyAdded) {
+          allFutureScales.push({
+            id: doc.id,
+            ...data,
+            dataCulto: new Date(data.dataCulto + 'T00:00:00'), // Converte para Date object
+            igrejaId: currentIgrejaId,
+          });
+        }
+      });
+
+      // --- ORDENAR TODOS OS CULTOS COMBINADOS E LIMITAR AOS 5 MAIS PRÓXIMOS ---
+      const cultosFinais = allFutureScales
+        .sort((a, b) => a.dataCulto.getTime() - b.dataCulto.getTime())
+        .slice(0, 5); // Limita aos 5 mais próximos
+
+      setCultos(cultosFinais);
+
     } catch (error) {
-      console.error('Erro ao buscar cultos na Home:', error);
+      console.error('Erro ao buscar cultos:', error);
       setErrorCultos('Erro ao carregar seus cultos. Verifique sua conexão e permissões.');
-    } finally {
-      setIsLoadingCultos(false);
     }
   };
 
-  // Função para buscar a contagem de notificações não lidas
   const fetchUnreadNotificationsCount = async (currentIgrejaId, currentUserId) => {
     try {
-      const notificationsRef = collection(db, 'igrejas', currentIgrejaId, 'notificacoes');
+      // Ajuste para ler as notificações da subcoleção do usuário
+      const notificationsRef = collection(db, 'igrejas', currentIgrejaId, 'usuarios', currentUserId, 'notificacoes');
       const qNotifications = query(
         notificationsRef,
-        where('read', '==', false),
-        where('targetUserId', '==', currentUserId) // Assume que notificações são direcionadas
+        where('read', '==', false)
       );
       const notificationsSnap = await getDocs(qNotifications);
       setUnreadNotificationsCount(notificationsSnap.size);
     } catch (error) {
-      console.error('Erro ao buscar contagem de notificações:', error);
+      console.error('Erro ao buscar notificações não lidas na Home:', error);
       setUnreadNotificationsCount(0); // Em caso de erro, assume 0
     }
   };
@@ -143,7 +199,7 @@ export default function Home() {
         <TouchableOpacity onPress={() => setIsMenuVisible(true)}>
           <Ionicons name="menu" size={30} color="#333" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Home</Text> {/* Título central da Home */}
+        <Text style={styles.headerTitle}>Home</Text>
         <TouchableOpacity onPress={() => navigation.navigate('Notificacoes')}>
           <Ionicons name="notifications-outline" size={30} color="#333" />
           {unreadNotificationsCount > 0 && (
@@ -156,14 +212,21 @@ export default function Home() {
 
       <Text style={styles.title}>Próximos Cultos</Text>
 
-      {/* Conditional rendering for loading, error, or content */}
+      {/* Renderização condicional para carregamento, erro ou conteúdo */}
       {isLoadingCultos ? (
         <ActivityIndicator size="large" color="#003D29" style={styles.loadingIndicator} />
       ) : errorCultos ? (
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>{errorCultos}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={() => navigation.replace('Login')}>
-            <Text style={styles.retryButtonText}>Voltar ao Login</Text>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={() => {
+              setErrorCultos('');
+              setIsLoadingCultos(true);
+              navigation.replace('Home');
+            }}
+          >
+            <Text style={styles.retryButtonText}>Tentar Novamente</Text>
           </TouchableOpacity>
         </View>
       ) : (
@@ -172,7 +235,7 @@ export default function Home() {
             cultos.map((culto) => (
               <TouchableOpacity
                 key={culto.id}
-                onPress={() => navigation.navigate('DetalhesEscala', { escala: culto })}
+                onPress={() => navigation.navigate('EscalaDetalhes', { escala: { id: culto.id, igrejaId: culto.igrejaId } })}
               >
                 <EscalaCard escala={culto} />
               </TouchableOpacity>
@@ -196,9 +259,8 @@ export default function Home() {
       <Menu
         isVisible={isMenuVisible}
         onClose={() => setIsMenuVisible(false)}
-        // Passa as props do usuário para o Menu
-        userId={userId}
-        igrejaId={userChurchIdState} // Use o ID da igreja que foi efetivamente carregado/determinado
+        userId={paramUserId}
+        igrejaId={userChurchIdState}
         isLider={isLider}
         isMinisterForCults={isMinisterForCults}
       />
@@ -206,7 +268,7 @@ export default function Home() {
       {/* REPASSA os parâmetros para o BottomTab */}
       <BottomTab
         navigation={navigation}
-        userId={userId}
+        userId={paramUserId}
         igrejaId={userChurchIdState}
         isLider={isLider}
         isMinisterForCults={isMinisterForCults}

@@ -1,27 +1,52 @@
 {
   "expo": {
-    "name": "Praise Scaler App",
-    "slug": "grupo-louvor-app",
+    "name": "Praise Scale App",
+    "slug": "praise-scale-app",
     "version": "1.0.0",
     "sdkVersion": "50.0.0",
     "packagerOpts": {
       "hostType": "lan"
     },
-    "platforms": ["ios", "android", "web"],
+    "platforms": [
+      "ios",
+      "android",
+      "web"
+    ],
     "entryPoint": "node_modules/expo/AppEntry.js",
     "updates": {
       "fallbackToCacheTimeout": 0
     },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "O aplicativo acessa suas fotos para permitir que você defina sua foto de perfil.",
+          "cameraPermission": "O aplicativo precisa de acesso à sua câmera para tirar uma foto de perfil."
+        }
+      ]
+    ],
     "assetBundlePatterns": [
       "**/*"
     ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "O aplicativo acessa suas fotos para permitir que você defina sua foto de perfil.",
+        "NSCameraUsageDescription": "O aplicativo precisa de acesso à sua câmera para tirar uma foto de perfil."
+      }
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#FFFFFF"
-      }
+        "foregroundImage": "./assets/img/logo-praise-scale.png",
+        "backgroundColor": "#ffffff"
+      },
+      "permissions": [
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ],
+      "package": "app.praisescale"
     }
   }
 }

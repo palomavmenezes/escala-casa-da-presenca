@@ -163,14 +163,6 @@ export default function Detalhes() {
   return (
     <>
       <View style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={24} color="#000" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Detalhes do Louvor</Text>
-        </View>
-
-        <ScrollView contentContainerStyle={styles.content}>
           <Text style={styles.nome}>{musica.nome}</Text>
 
           {musica.cantorOriginal && (
@@ -224,7 +216,6 @@ export default function Detalhes() {
               </TouchableOpacity>
             </View>
           )}
-        </ScrollView>
       </View>
       <BottomTab />
     </>
@@ -235,7 +226,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
-    paddingTop: 60,
+    paddingTop: 30,
     paddingHorizontal: 20,
   },
   loadingContainer: {
