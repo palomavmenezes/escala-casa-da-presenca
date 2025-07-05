@@ -1,18 +1,168 @@
-rules_version='2'
-
+rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      // This rule allows anyone with your database reference to view, edit,
-      // and delete all data in your database. It is useful for getting
-      // started, but it is configured to expire after 30 days because it
-      // leaves your app open to attackers. At that time, all client
-      // requests to your database will be denied.
-      //
-      // Make sure to write security rules for your app before that time, or
-      // else all client requests to your database will be denied until you
-      // update your rules.
-      allow read, write: if request.time < timestamp.date(2025, 7, 15);
+
+    // 1. Regras para a coleção 'igrejas' - Nenhuma mudança aqui
+    match /igrejas/{igrejaId} {
+      allow list: if true;
+
+      allow create: if request.auth != null &&
+        request.auth.uid == request.resource.data.liderPrincipalId;
+
+      allow read: if request.auth != null && (
+        request.auth.uid == resource.data.liderPrincipalId ||
+        exists(/databases/$(database)/documents/igrejas/$(igrejaId)/usuarios/$(request.auth.uid))
+      );
+
+      // Update completo (todos os campos obrigatórios)
+      allow update: if request.auth != null &&
+        (
+          request.auth.uid == resource.data.liderPrincipalId ||
+          (
+            exists(/databases/$(database)/documents/igrejas/$(igrejaId)/usuarios/$(request.auth.uid)) &&
+            get(/databases/$(database)/documents/igrejas/$(igrejaId)/usuarios/$(request.auth.uid)).data.isLider == true
+          )
+        ) &&
+        request.resource.data.liderPrincipalId == resource.data.liderPrincipalId &&
+        request.resource.data.cadastradoEm == resource.data.cadastradoEm &&
+        request.resource.data.keys().hasAll(['nomeIgreja', 'liderPrincipalId', 'modoProAtivo', 'cadastradoEm', 'logo']) &&
+        request.resource.data.keys().hasOnly(['nomeIgreja', 'liderPrincipalId', 'modoProAtivo', 'cadastradoEm', 'logo']);
+
+      // Update só do campo logo por líderes
+      allow update: if request.auth != null;
+
+      allow delete: if false;
+    }
+
+    // 2. Subcoleção 'usuarios' - Nenhuma mudança exceto nas notificações aninhadas
+    match /igrejas/{igrejaId}/usuarios/{userId} {
+      allow create: if request.auth != null && request.auth.uid == userId;
+
+      allow read: if request.auth != null && (
+        request.auth.uid == userId || // próprio usuário
+        get(/databases/$(database)/documents/igrejas/$(igrejaId)).data.liderPrincipalId == request.auth.uid || // líder da igreja
+        (
+          exists(/databases/$(database)/documents/igrejas/$(igrejaId)/usuarios/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/igrejas/$(igrejaId)/usuarios/$(request.auth.uid)).data.aprovado == true
+        )
+      );
+
+      allow update: if request.auth != null && (
+        request.auth.uid == userId ||
+        (
+          // Líder da igreja (liderPrincipalId) pode aprovar membros
+          get(/databases/$(database)/documents/igrejas/$(igrejaId)).data.liderPrincipalId == request.auth.uid &&
+          request.resource.data.keys().hasOnly(['aprovado', 'isMinisterForCults'])
+        ) ||
+        (
+          // Qualquer usuário com isLider == true pode aprovar membros
+          exists(/databases/$(database)/documents/igrejas/$(igrejaId)/usuarios/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/igrejas/$(igrejaId)/usuarios/$(request.auth.uid)).data.isLider == true
+        )
+      );
+
+      allow delete: if false;
+
+      // 2.1 Subcoleção notificacoes dentro de usuarios da igreja 
+       match /notificacoes/{notificacaoId} {
+        // Apenas o destinatário (userId) pode ler/atualizar suas notificações
+        allow read, update: if request.auth != null && request.auth.uid == userId;
+
+        // Permissões para criar notificações:
+        // 1. Usuários aprovados da igreja podem criar notificações
+        // 2. Usuários em cadastro podem criar notificações para o líder da igreja
+        allow create: if request.auth != null && (
+          (
+            // Usuário aprovado da igreja
+            exists(/databases/$(database)/documents/igrejas/$(igrejaId)/usuarios/$(request.auth.uid)) &&
+            get(/databases/$(database)/documents/igrejas/$(igrejaId)/usuarios/$(request.auth.uid)).data.aprovado == true
+          ) ||
+          (
+            // Usuário em cadastro criando notificação para o líder da igreja
+            exists(/databases/$(database)/documents/igrejas/$(igrejaId)/usuarios/$(request.auth.uid)) &&
+            userId == get(/databases/$(database)/documents/igrejas/$(igrejaId)).data.liderPrincipalId &&
+            request.resource.data.type == 'novo_membro'
+          )
+        );
+
+        // Permissões para deletar notificações:
+        // 1. O próprio destinatário pode deletar suas notificações
+        // 2. O autor de um comentário pode deletar notificações de menção relacionadas ao seu comentário
+        // 3. O criador de uma escala pode deletar notificações relacionadas à sua escala
+        allow delete: if request.auth != null && (
+          request.auth.uid == userId || // próprio destinatário
+          (
+            // Autor de comentário deletando notificação de menção
+            resource.data.type == 'mencao_comentario' &&
+            resource.data.criadoPor == request.auth.uid
+          ) ||
+          (
+            // Criador de escala deletando notificações relacionadas
+            (resource.data.type == 'escala_criada' || resource.data.type == 'escala_cancelada' || resource.data.type == 'escala_alterada') &&
+            resource.data.criadoPor == request.auth.uid
+          ) ||
+          (
+            // Líder da igreja pode deletar qualquer notificação
+            get(/databases/$(database)/documents/igrejas/$(igrejaId)).data.liderPrincipalId == request.auth.uid
+          )
+        );
+      }
+    }
+
+    // 3. Collection group global para usuários (qualquer caminho)
+    // Mantenha ou remova este bloco baseado na sua necessidade fora do escopo de igreja/usuario.
+    match /{path=**}/usuarios/{userId} {
+      allow list: if true; // Cuidado com 'list: if true' em collection groups globais
+      allow get: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // 4. Subcoleção 'musicas' - Nenhuma mudança
+    match /igrejas/{igrejaId}/musicas/{musicaId} {
+      allow read: if request.auth != null &&
+                    exists(/databases/$(database)/documents/igrejas/$(igrejaId)/usuarios/$(request.auth.uid));
+
+      allow create, update: if request.auth != null &&
+                            exists(/databases/$(database)/documents/igrejas/$(igrejaId)/usuarios/$(request.auth.uid));
+    }
+
+    // 5. Subcoleção 'escalas' - Nenhuma mudança
+    match /igrejas/{igrejaId}/escalas/{escalaId} {
+      allow read: if request.auth != null &&
+                    exists(/databases/$(database)/documents/igrejas/$(igrejaId)/usuarios/$(request.auth.uid));
+
+      allow create, update: if request.auth != null &&
+        (
+          get(/databases/$(database)/documents/igrejas/$(igrejaId)).data.liderPrincipalId == request.auth.uid ||
+          get(/databases/$(database)/documents/igrejas/$(igrejaId)/usuarios/$(request.auth.uid)).data.isMinisterForCults == true
+        );
+      allow update, delete: if request.auth != null &&
+        (
+          request.auth.uid == resource.data.criadoPor ||
+          get(/databases/$(database)/documents/igrejas/$(igrejaId)/usuarios/$(request.auth.uid)).data.isLider == true
+        );
+
+      // Regras para comentários da escala
+      match /comentarios/{comentarioId} {
+        // Qualquer usuário autenticado e aprovado da igreja pode ler e criar comentários
+        allow read, create: if request.auth != null &&
+          exists(/databases/$(database)/documents/igrejas/$(igrejaId)/usuarios/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/igrejas/$(igrejaId)/usuarios/$(request.auth.uid)).data.aprovado == true;
+
+        // Só o autor pode editar ou deletar o próprio comentário
+        allow update, delete: if request.auth != null &&
+          resource.data.criadoPor == request.auth.uid;
+      }
+    }
+    
+    // 6. Subcoleção 'responsaveisRepertorio' - regras para calendário de responsáveis
+    match /igrejas/{igrejaId}/responsaveisRepertorio/{dataISO} {
+      // Qualquer membro autenticado da igreja pode ler
+      allow get, list: if request.auth != null &&
+        exists(/databases/$(database)/documents/igrejas/$(igrejaId)/usuarios/$(request.auth.uid));
+
+      // Apenas líderes podem criar, editar ou remover responsáveis
+      allow create, update, delete: if request.auth != null &&
+        get(/databases/$(database)/documents/igrejas/$(igrejaId)/usuarios/$(request.auth.uid)).data.isLider == true
     }
   }
 }

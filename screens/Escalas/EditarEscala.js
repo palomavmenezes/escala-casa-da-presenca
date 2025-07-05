@@ -12,6 +12,7 @@ import {
   Switch,
   Linking,
   ActivityIndicator, // Adicionado para estado de carregamento
+  Platform,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { db, auth } from '../../services/firebase';
@@ -39,410 +40,227 @@ import SelectMusicianModal from '../../components/domain/SelectMusicianModal';
 import SelectAreaModal from '../../components/domain/SelectAreaModal';
 import SelectMusicModal from '../../components/domain/SelectMusicModal';
 import SelectSingerModal from '../../components/domain/SelectSingerModal';
+import Avatar from '../../components/ui/Avatar';
 
-export default function EditarEscalas({ navigation }) {
-  const route = useRoute();
-  const { escala } = route.params; // Obtém o objeto da escala a ser editada
-
-  const [dataCulto, setDataCulto] = useState('');
+export default function EditarEscalas({ navigation, route }) {
+  const { escala } = route.params;
+  // Estados principais do formulário
+  const [ministros, setMinistros] = useState([]);
+  const [musicas, setMusicas] = useState([]);
+  const [form, setForm] = useState({
+    ministros: [],
+    musicas: [],
+    dataCulto: '',
+    horaCulto: '',
+    dataEnsaio: '',
+    horaEnsaio: '',
+    observacoes: '',
+  });
+  const [modals, setModals] = useState({
+    selectMusician: false,
+    selectArea: false,
+    selectMusic: false,
+    selectSinger: false,
+    areaMusico: null,
+    musicaIdx: null,
+  });
+  const [selectedAreas, setSelectedAreas] = useState([]);
   const [marcarEnsaio, setMarcarEnsaio] = useState(false);
-  const [dataEnsaio, setDataEnsaio] = useState('');
-  const [horaEnsaio, setHoraEnsaio] = useState('');
-  const [showDatePickerCulto, setShowDatePickerCulto] = useState(false);
-  const [showDatePickerEnsaio, setShowDatePickerEnsaio] = useState(false);
-  const [showTimePickerEnsaio, setShowTimePickerEnsaio] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [showEnsaioDatePicker, setShowEnsaioDatePicker] = useState(false);
+  const [showEnsaioTimePicker, setShowEnsaioTimePicker] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [telaErro, setTelaErro] = useState('');
+  const [igrejaId, setIgrejaId] = useState(null);
 
-  const [ministros, setMinistros] = useState([]); // Todos os usuários/ministros da igreja
-  const [ministrosEscalados, setMinistrosEscalados] = useState([]); // IDs dos ministros selecionados para a escala
-  const [modalMinistrosVisible, setModalMinistrosVisible] = useState(false);
-
-  const [musicasDisponiveis, setMusicasDisponiveis] = useState([]); // Todas as músicas da igreja
-  const [musicasSelecionadas, setMusicasSelecionadas] = useState([]); // Músicas selecionadas para a escala
-  const [modalMusicasVisible, setModalMusicasVisible] = useState(false);
-  const [musicaSearchQuery, setMusicaSearchQuery] = useState('');
-  const [filteredMusicas, setFilteredMusicas] = useState([]);
-  const [currentMusicIndexForSingers, setCurrentMusicIndexForSingers] = useState(null);
-  const [modalCantoresMusicaVisible, setModalCantoresMusicaVisible] = useState(false);
-
-  const [userChurchId, setUserChurchId] = useState(null); // ID da igreja do usuário
-  const [loading, setLoading] = useState(true); // Estado de carregamento para busca de dados
-  const [telaErro, setTelaErro] = useState(''); // Estado para exibir erros
-
-  const [currentMinistroBeingEdited, setCurrentMinistroBeingEdited] = useState(null);
-  const [ministroRolesSelected, setMinistroRolesSelected] = useState([]);
-  const [modalMinistroRolesVisible, setModalMinistroRolesVisible] = useState(false);
-
-  const areaOptions = ['Voz', 'Backing Vocal', 'Violão', 'Guitarra', 'Baixo', 'Bateria', 'Teclado', 'Apoio Técnico'];
-
-  // Efeito para carregar os dados iniciais da escala e dados específicos da igreja (ministros, músicas)
+  // Carregar dados iniciais
   useEffect(() => {
-    const carregarDadosDaEscalaEComuns = async () => {
+    const carregarDados = async () => {
       setLoading(true);
-      setTelaErro('');
-
-      const currentUser = auth.currentUser;
-      if (!currentUser) {
-        setTelaErro('Usuário não autenticado. Faça login para editar escalas.');
-        setLoading(false);
-        navigation.navigate('Login');
-        return;
-      }
-
-      // Verifica se a escala e seus IDs essenciais estão presentes
-      if (!escala || !escala.id || !escala.igrejaId) {
-        setTelaErro('Dados da escala para edição estão incompletos ou ausentes.');
-        setLoading(false);
-        return;
-      }
-
-      // Define os estados iniciais com os dados da escala passada
-      setDataCulto(escala.dataCulto || '');
-      setMarcarEnsaio(escala.ensaio || false);
-      setDataEnsaio(escala.dataEnsaio || '');
-      setHoraEnsaio(escala.horaEnsaio || '');
-      setMinistrosEscalados(escala.usuariosEscalados || []);
-      // Mapeia as músicas existentes para o formato de estado, garantindo que 'cantores' sejam IDs
-      setMusicasSelecionadas(escala.musicas?.map(m => ({
-        musicaId: m.musicaId,
-        musicaNome: m.musicaNome,
-        cifra: m.cifra,
-        video: m.video || '',
-        tom: m.tom || '', // Inclui 'tom' se estiver disponível no documento original da música
-        cantores: m.cantores || [], // Garante que cantores são IDs
-      })) || []);
-
       try {
-        const igrejaId = escala.igrejaId; // Usa o igrejaId da própria escala
-        setUserChurchId(igrejaId);
-
-        // Carrega todos os usuários (ministros) aprovados da igreja específica
-        const ministrosQuery = query(
-          collection(db, 'igrejas', igrejaId, 'usuarios'),
-          where('aprovado', '==', true)
-        );
-        const ministrosSnap = await getDocs(ministrosQuery);
-        const listaMinistros = ministrosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const currentUser = auth.currentUser;
+        if (!currentUser) throw new Error('Usuário não autenticado');
+        if (!escala || !escala.id || !escala.igrejaId) throw new Error('Dados da escala ausentes');
+        setIgrejaId(escala.igrejaId);
+        // Buscar ministros
+        const ministrosSnap = await getDocs(collection(db, 'igrejas', escala.igrejaId, 'usuarios'));
+        const listaMinistros = ministrosSnap.docs.map(doc => {
+          const data = doc.data();
+          let iniciais = '';
+          if (data.nome) {
+            const partes = data.nome.trim().split(' ');
+            iniciais = partes[0][0].toUpperCase();
+            if (partes.length > 1) {
+              iniciais += partes[partes.length - 1][0].toUpperCase();
+            }
+          }
+          return { id: doc.id, ...data, iniciais };
+        });
         setMinistros(listaMinistros);
-
-        // Carrega todas as músicas da igreja específica
-        const musicasQuery = collection(db, 'igrejas', igrejaId, 'musicas');
-        const musicasSnap = await getDocs(musicasQuery);
-        const listaMusicas = musicasSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setMusicasDisponiveis(listaMusicas);
-        setFilteredMusicas(listaMusicas); // Inicializa a lista filtrada
-      } catch (error) {
-        console.error('Erro ao buscar dados para edição da escala:', error);
-        setTelaErro('Não foi possível carregar os dados para edição. Tente novamente.');
+        // Buscar músicas
+        const musicasSnap = await getDocs(collection(db, 'igrejas', escala.igrejaId, 'musicas'));
+        setMusicas(musicasSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        // Preencher formulário com dados da escala
+        setForm({
+          ministros: (escala.usuariosEscalados || []).map(m => {
+            const user = listaMinistros.find(u => u.id === m.userId);
+            return user ? { ...user, areas: m.roles || [] } : { id: m.userId, areas: m.roles || [] };
+          }),
+          musicas: (escala.musicas || []).map(m => ({
+            ...m,
+            cantores: (m.cantores || []).map(cid => {
+              const cantor = listaMinistros.find(u => u.id === cid || u.id === cid.id);
+              return cantor ? { id: cantor.id, nome: cantor.nome, foto: cantor.foto, iniciais: cantor.iniciais } : { id: cid };
+            })
+          })),
+          dataCulto: escala.dataCulto instanceof Date
+            ? escala.dataCulto.toISOString().split('T')[0]
+            : (typeof escala.dataCulto === 'string' ? escala.dataCulto : ''),
+          horaCulto: escala.horaCulto || '',
+          dataEnsaio: escala.dataEnsaio instanceof Date
+            ? escala.dataEnsaio.toISOString().split('T')[0]
+            : (typeof escala.dataEnsaio === 'string' ? escala.dataEnsaio : ''),
+          horaEnsaio: escala.horaEnsaio || '',
+          observacoes: escala.observacoes || '',
+        });
+        setMarcarEnsaio(!!escala.dataEnsaio);
+      } catch (e) {
+        setTelaErro(e.message || 'Erro ao carregar dados.');
       } finally {
         setLoading(false);
       }
     };
+    carregarDados();
+  }, [escala]);
 
-    carregarDadosDaEscalaEComuns();
-  }, [escala, navigation]); // Adiciona 'escala' e 'navigation' como dependências
-
-  // Efeito para filtrar músicas quando a busca ou a lista de músicas disponíveis muda
-  useEffect(() => {
-    if (musicaSearchQuery) {
-      const lowerCaseQuery = musicaSearchQuery.toLowerCase();
-      const filtered = musicasDisponiveis.filter(musica =>
-        musica.nome.toLowerCase().includes(lowerCaseQuery)
-      );
-      setFilteredMusicas(filtered);
-    } else {
-      setFilteredMusicas(musicasDisponiveis);
+  // Handlers de seleção de datas/horas
+  const onDateChange = (event, selectedDate) => {
+    setShowDatePicker(false);
+    if (selectedDate) {
+      const formattedDate = selectedDate.toISOString().split('T')[0];
+      setForm({ ...form, dataCulto: formattedDate });
     }
-  }, [musicaSearchQuery, musicasDisponiveis]);
-
-  // --- Funções para Seleção de Data e Hora (Mantidas do CriarEscalas) ---
-  const onChangeCultoDate = (event, selectedDate) => {
-    const currentDate = selectedDate || new Date();
-    setShowDatePickerCulto(false);
-    setDataCulto(currentDate.toISOString().split('T')[0]);
+  };
+  const onTimeChange = (event, selectedTime) => {
+    setShowTimePicker(false);
+    if (selectedTime) {
+      const formattedTime = selectedTime.toTimeString().split(' ')[0].substring(0, 5);
+      setForm({ ...form, horaCulto: formattedTime });
+    }
+  };
+  const onEnsaioDateChange = (event, selectedDate) => {
+    setShowEnsaioDatePicker(false);
+    if (selectedDate) {
+      const formattedDate = selectedDate.toISOString().split('T')[0];
+      setForm({ ...form, dataEnsaio: formattedDate });
+    }
+  };
+  const onEnsaioTimeChange = (event, selectedTime) => {
+    setShowEnsaioTimePicker(false);
+    if (selectedTime) {
+      const formattedTime = selectedTime.toTimeString().split(' ')[0].substring(0, 5);
+      setForm({ ...form, horaEnsaio: formattedTime });
+    }
   };
 
-  const onChangeEnsaioDate = (event, selectedDate) => {
-    const currentDate = selectedDate || new Date();
-    setShowDatePickerEnsaio(false);
-    setDataEnsaio(currentDate.toISOString().split('T')[0]);
+  // Handlers para músicos, áreas, músicas, cantores (iguais ao cadastro)
+  const onSelectMusician = (musico) => {
+    if ((form.ministros || []).some(m => m.id === musico.id)) return;
+    setForm(prev => ({ ...prev, ministros: [...prev.ministros, musico] }));
+    setSelectedAreas(musico.areas || []);
+    setModals(m => ({ ...m, selectMusician: false, selectArea: true, areaMusico: musico }));
   };
-
-  const onChangeEnsaioTime = (event, selectedTime) => {
-    const currentTime = selectedTime || new Date();
-    setShowTimePickerEnsaio(false);
-    setHoraEnsaio(currentTime.toTimeString().split(' ')[0].substring(0, 5));
+  const onSaveAreas = () => {
+    setForm(prev => ({
+      ...prev,
+      ministros: prev.ministros.map(m =>
+        m.id === modals.areaMusico.id ? { ...m, areas: selectedAreas } : m
+      )
+    }));
+    setModals(m => ({ ...m, selectArea: false, areaMusico: null }));
+    setSelectedAreas([]);
   };
-
-  // --- Funções para Ministros (Mantidas) ---
-  const handleAdicionarMinistro = (ministro) => {
-    setCurrentMinistroBeingEdited(ministro.id);
-    setMinistroRolesSelected([]); // Começa sem áreas selecionadas
-    setModalMinistroRolesVisible(true);
+  const onToggleArea = (area) => {
+    setSelectedAreas(prev => prev.includes(area) ? prev.filter(a => a !== area) : [...prev, area]);
   };
-
-  const saveMinistroRoles = () => {
-    setMinistrosEscalados(prev => {
-      const exists = prev.some(m => m.userId === currentMinistroBeingEdited);
-      if (exists) {
-        return prev.map(m =>
-          m.userId === currentMinistroBeingEdited ? { ...m, areas: ministroRolesSelected } : m
-        );
-      } else {
-        return [...prev, { userId: currentMinistroBeingEdited, areas: ministroRolesSelected }];
+  const onAddSinger = (musicaIdx, cantorId) => {
+    setForm(prev => {
+      const musicas = [...prev.musicas];
+      const cantores = musicas[musicaIdx].cantores || [];
+      if (!cantores.some(c => c.id === cantorId)) {
+        const cantor = ministros.find(m => m.id === cantorId);
+        musicas[musicaIdx].cantores = [...cantores, cantor ? { id: cantor.id, nome: cantor.nome, foto: cantor.foto, iniciais: cantor.iniciais } : { id: cantorId }];
       }
+      return { ...prev, musicas };
     });
-    setModalMinistroRolesVisible(false);
-    setCurrentMinistroBeingEdited(null);
-    setMinistroRolesSelected([]);
+    setModals(m => ({ ...m, selectSinger: false, musicaIdx: null }));
   };
 
-  const removerMinistroEscalado = (userId) => {
-    setMinistrosEscalados(prev => prev.filter(m => m.userId !== userId));
-  };
-
-  const formatarAreas = (areas) => {
-    if (!areas || areas.length === 0) return '';
-    if (areas.length === 1) return areas[0];
-    return areas.slice(0, -1).join(', ') + ' e ' + areas[areas.length - 1];
-  };
-
-  const getMinistroNomeById = (id) => {
-    const ministro = ministros.find(m => m.id === id);
-    return ministro ? ministro.nome : 'Autor desconhecido';
-  };
-
-  // Usando 'foto' como o campo para a URL da foto, com base na sua estrutura de dados
-  const getMinistroFotoById = (id) => {
-    const ministro = ministros.find(m => m.id === id);
-    return ministro ? ministro.foto : null;
-  };
-
-  const getMinistroIniciaisById = (id) => {
-    const ministro = ministros.find(m => m.id === id);
-    if (!ministro || !ministro.nome) return '';
-    // Corrigido para usar nome e sobrenome, se disponíveis, para iniciais
-    const nomeCompleto = `${ministro.nome} ${ministro.sobrenome || ''}`.trim();
-    return nomeCompleto
-      .split(' ')
-      .slice(0, 2)
-      .map(p => p[0].toUpperCase())
-      .join('');
-  };
-
-  // --- Funções para Músicas (Mantidas) ---
-  const handleAdicionarMusicas = (musicaId) => {
-    const musicaJaAdicionada = musicasSelecionadas.some(m => m.musicaId === musicaId);
-    if (musicaJaAdicionada) {
-      Alert.alert('Atenção', 'Esta música já foi adicionada à escala.');
+  // Handler para salvar edição (update)
+  const handleSaveEdicao = async () => {
+    if (!form.dataCulto) {
+      Alert.alert('Erro', 'Data do culto obrigatória');
       return;
     }
-
-    const musica = musicasDisponiveis.find(m => m.id === musicaId);
-    if (musica) {
-      setMusicasSelecionadas(prev => [
-        ...prev,
-        {
-          musicaId: musica.id,
-          musicaNome: musica.nome,
-          cifra: musica.cifra,
-          video: musica.video || '',
-          tom: musica.tom || '', // Inclui tom se disponível no documento da música
-          cantores: [],
-        },
-      ]);
-      setModalMusicasVisible(false);
-      setMusicaSearchQuery('');
-    }
-  };
-
-  const handleRemoverMusica = (index) => {
-    Alert.alert(
-      'Remover Música',
-      'Tem certeza que deseja remover esta música da escala?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        { text: 'Remover', onPress: () => {
-            setMusicasSelecionadas(prev => prev.filter((_, i) => i !== index));
-          },
-        },
-      ],
-      { cancelable: true }
-    );
-  };
-
-  const handleOpenCifra = (link) => {
-    Linking.openURL(link).catch(err => console.error('Erro ao abrir link:', err));
-  };
-
-  const updateMusicaVideoLink = (index, text) => {
-    const newMusicas = [...musicasSelecionadas];
-    newMusicas[index].video = text;
-    setMusicasSelecionadas(newMusicas);
-  };
-
-  // Função mais robusta para extrair o ID do vídeo do YouTube e montar a URL de embed
-  const getYouTubeEmbedUrl = (url) => {
-    if (!url) return null;
-    const regExp = /(?:https?:\/\/)?(?:www\.)?(?:m\.)?(?:youtube\.com|youtu\.be)\/(?:watch\?v=|embed\/|v\/|)([\w-]{11})(?:\S+)?/i;
-    const match = url.match(regExp);
-    if (match && match[1]) {
-      // Adiciona parâmetros para um player mais limpo (sem logo YouTube, sem vídeos relacionados)
-      return `https://www.youtube.com/embed/${match[1]}?modestbranding=1&rel=0`;
-    }
-    return null;
-  };
-
-  const openCantoresMusicaModal = (index) => {
-    setCurrentMusicIndexForSingers(index);
-    setModalCantoresMusicaVisible(true);
-  };
-
-  const toggleCantorMusica = (ministroId) => {
-    if (currentMusicIndexForSingers !== null) {
-      setMusicasSelecionadas(prevMusicas => {
-        const newMusicas = [...prevMusicas];
-        const cantoresDaMusica = newMusicas[currentMusicIndexForSingers].cantores;
-        if (cantoresDaMusica.includes(ministroId)) {
-          newMusicas[currentMusicIndexForSingers].cantores = cantoresDaMusica.filter(
-            id => id !== ministroId
-          );
-        } else {
-          newMusicas[currentMusicIndexForSingers].cantores = [...cantoresDaMusica, ministroId];
-        }
-        return newMusicas;
-      });
-    }
-  };
-
-  const getCantoresSelecionadosParaMusica = (index) => {
-    return musicasSelecionadas[index]?.cantores || [];
-  };
-
-  const removerCantorDaMusica = (musicaIndex, cantorId) => {
-    setMusicasSelecionadas(prevMusicas => {
-      const newMusicas = [...prevMusicas];
-      newMusicas[musicaIndex].cantores = newMusicas[musicaIndex].cantores.filter(
-        id => id !== cantorId
-      );
-      return newMusicas;
-    });
-  };
-
-  // --- Função para Salvar Edições na Escala (Update) ---
-  const salvarEdicaoEscala = async () => {
-    if (!dataCulto) {
-      Alert.alert('Erro', 'Por favor, selecione a data do culto.');
+    if (!escala || !escala.id || !igrejaId) {
+      Alert.alert('Erro', 'Dados da escala ausentes');
       return;
     }
-    if (marcarEnsaio && (!dataEnsaio || !horaEnsaio)) {
-      Alert.alert('Erro', 'Por favor, preencha a data e hora do ensaio.');
-      return;
-    }
-    if (ministrosEscalados.length === 0) {
-      Alert.alert('Erro', 'Por favor, escale ao menos um músico.');
-      return;
-    }
-    if (musicasSelecionadas.length === 0) {
-      Alert.alert('Erro', 'Por favor, adicione ao menos uma música.');
-      return;
-    }
-    if (!userChurchId) {
-      Alert.alert('Erro', 'Não foi possível determinar a igreja do usuário.');
-      return;
-    }
-    if (!escala || !escala.id) {
-      Alert.alert('Erro', 'ID da escala não encontrado para atualização.');
-      return;
-    }
-
     try {
-      const currentUser = auth.currentUser;
-      if (!currentUser) {
-        Alert.alert('Erro', 'Você precisa estar logado para editar uma escala.');
-        return;
-      }
-
-      // Referência ao documento da escala a ser atualizada
-      const escalaRef = doc(db, 'igrejas', userChurchId, 'escalas', escala.id);
-
+      setLoading(true);
       // Montar arrays corretos
-      const usuariosEscalados = (ministrosEscalados || []).map(m => ({
-        userId: m.userId,
+      const usuariosEscalados = (form.ministros || []).map(m => ({
+        userId: m.id,
         roles: m.areas || [],
       }));
       const usuariosEscaladosIds = usuariosEscalados.map(u => u.userId);
-
-      await updateDoc(escalaRef, {
-        dataCulto: dataCulto,
-        ensaio: marcarEnsaio,
-        dataEnsaio: marcarEnsaio ? dataEnsaio : null,
-        horaEnsaio: marcarEnsaio ? horaEnsaio : null,
-        musicas: musicasSelecionadas.map(m => ({
-          cantores: m.cantores,
-          cifra: m.cifra,
-          musicaId: m.musicaId,
-          musicaNome: m.musicaNome,
-          video: m.video,
-          tom: m.tom || '',
-        })),
+      const musicasParaSalvar = (form.musicas || []).map(musica => ({
+        ...musica,
+        cantores: (musica.cantores || []).map(c => c.id),
+      }));
+      await updateDoc(doc(db, 'igrejas', igrejaId, 'escalas', escala.id), {
+        dataCulto: form.dataCulto,
+        horaCulto: form.horaCulto,
+        dataEnsaio: marcarEnsaio ? form.dataEnsaio : '',
+        horaEnsaio: marcarEnsaio ? form.horaEnsaio : '',
+        musicas: musicasParaSalvar,
         usuariosEscalados,
         usuariosEscaladosIds,
+        observacoes: form.observacoes,
         ultimaEdicaoEm: new Date(),
-        editadoPor: currentUser.uid,
+        editadoPor: auth.currentUser?.uid,
       });
-
-      Alert.alert('Sucesso', 'Escala atualizada com sucesso!');
-      navigation.goBack?.();
+      Alert.alert('Sucesso', 'Escala editada com sucesso!');
+      navigation.goBack();
     } catch (e) {
-      console.error('Erro ao salvar edição da escala:', e);
-      Alert.alert('Erro', 'Não foi possível atualizar a escala. Tente novamente.');
+      Alert.alert('Erro', e.message || 'Erro ao salvar edição.');
+    } finally {
+      setLoading(false);
     }
   };
 
-  // --- Função para Deletar Escala ---
-  const deletarEscala = () => {
-    Alert.alert(
-      'Confirmar Exclusão',
-      'Tem certeza que deseja DELETAR esta escala? Esta ação é irreversível.',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        { text: 'Deletar', style: 'destructive', onPress: async () => {
-            if (!userChurchId || !escala || !escala.id) {
-              Alert.alert('Erro', 'Não foi possível deletar a escala. Dados incompletos.');
-              return;
-            }
-            try {
-              const escalaRef = doc(db, 'igrejas', userChurchId, 'escalas', escala.id);
-              await deleteDoc(escalaRef);
-              Alert.alert('Sucesso', 'Escala deletada com sucesso!');
-              navigation.goBack?.(); // Volta para a tela anterior após a exclusão
-            } catch (e) {
-              console.error('Erro ao deletar escala:', e);
-              Alert.alert('Erro', 'Não foi possível deletar a escala. Tente novamente.');
-            }
-          },
-        },
-      ],
-      { cancelable: true }
-    );
+  // Função para formatar a lista de músicas selecionadas
+  const getMusicasText = () => {
+    if (!form.musicas || form.musicas.length === 0) {
+      return 'Selecione as músicas';
+    }
+    return form.musicas.map(m => m.titulo || m.nome).join(', ');
   };
 
-  // Renderiza estado de carregamento
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F5F6FA' }}>
         <ActivityIndicator size="large" color={theme.colors.primary} />
-        <Text style={styles.loadingText}>Carregando escala para edição...</Text>
+        <Text style={{ marginTop: 10, fontSize: 16, color: '#003D29' }}>Carregando escala para edição...</Text>
       </View>
     );
   }
-
-  // Renderiza estado de erro
   if (telaErro) {
     return (
-      <View style={styles.errorContainer}>
-        <Text style={styles.errorText}>{telaErro}</Text>
-        <Button onPress={() => navigation.goBack()} iconLeft="arrow-back" style={styles.button}>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20, backgroundColor: '#F5F6FA' }}>
+        <Text style={{ textAlign: 'center', color: 'red', fontSize: 16, marginBottom: 20 }}>{telaErro}</Text>
+        <Button onPress={() => navigation.goBack()} iconLeft="arrow-back" style={{ marginTop: 10 }}>
           Voltar
         </Button>
       </View>
@@ -450,246 +268,231 @@ export default function EditarEscalas({ navigation }) {
   }
 
   return (
-    <>
-      <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.header}>Editar Escala</Text>
-
-        {/* Input de Data do Culto */}
-        <TouchableOpacity onPress={() => setShowDatePickerCulto(true)}>
-          <TextInput
-            style={styles.input}
-            placeholder="Data do culto: AAAA-MM-DD"
-            value={dataCulto}
+    <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
+      <ScrollView style={{ paddingHorizontal: 18, paddingTop: 18 }}>
+        {/* Data do culto */}
+        <TouchableOpacity onPress={() => setShowDatePicker(true)}>
+          <Input
+            value={form.dataCulto}
+            onChangeText={text => setForm({ ...form, dataCulto: text })}
+            placeholder="Selecione a data do culto"
             editable={false}
           />
         </TouchableOpacity>
-        {showDatePickerCulto && (
+        {/* Hora do culto */}
+        <TouchableOpacity onPress={() => setShowTimePicker(true)}>
+          <Input
+            value={form.horaCulto || ''}
+            onChangeText={text => setForm({ ...form, horaCulto: text })}
+            placeholder="Selecione a hora do culto"
+            editable={false}
+          />
+        </TouchableOpacity>
+        {/* DateTimePickers */}
+        {showDatePicker && (
           <DateTimePicker
-            testID="datePickerCulto"
-            // Inicializa com a data atual da escala ou a data de hoje se vazia
-            value={dataCulto ? new Date(dataCulto) : new Date()}
+            value={form.dataCulto ? new Date(form.dataCulto) : new Date()}
             mode="date"
             display="default"
-            onChange={onChangeCultoDate}
+            onChange={onDateChange}
           />
         )}
-
-        {/* Marcar Ensaio + Toggle */}
-        <View style={styles.toggleContainer}>
-          <Text style={styles.toggleLabel}>Marcar ensaio</Text>
-          <Switch
-            trackColor={{ false: '#767577', true: '#6ACF9E' }}
-            thumbColor={marcarEnsaio ? '#f4f3f4' : '#f4f3f4'}
-            ios_backgroundColor="#3e3e3e"
-            onValueChange={setMarcarEnsaio}
-            value={marcarEnsaio}
+        {showTimePicker && (
+          <DateTimePicker
+            value={form.horaCulto ? new Date(`2000-01-01T${form.horaCulto}`) : new Date()}
+            mode="time"
+            display="default"
+            onChange={onTimeChange}
           />
+        )}
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginVertical: 8 }}>
+          <Text style={{ color: theme.colors.text, marginRight: 8 }}>Marcar ensaio</Text>
+          <Switch value={marcarEnsaio} onValueChange={setMarcarEnsaio} />
         </View>
-
-        {/* Inputs de Data e Hora do Ensaio (condicional) */}
         {marcarEnsaio && (
-          <View>
-            <TouchableOpacity onPress={() => setShowDatePickerEnsaio(true)}>
-              <TextInput
-                style={styles.input}
-                placeholder="Data do ensaio: AAAA-MM-DD"
-                value={dataEnsaio}
+          <>
+            <TouchableOpacity onPress={() => setShowEnsaioDatePicker(true)}>
+              <Input
+                value={form.dataEnsaio || ''}
+                onChangeText={text => setForm({ ...form, dataEnsaio: text })}
+                placeholder="Selecione a data do ensaio"
                 editable={false}
               />
             </TouchableOpacity>
-            {showDatePickerEnsaio && (
+            <TouchableOpacity onPress={() => setShowEnsaioTimePicker(true)}>
+              <Input
+                value={form.horaEnsaio || ''}
+                onChangeText={text => setForm({ ...form, horaEnsaio: text })}
+                placeholder="Selecione a hora do ensaio"
+                editable={false}
+              />
+            </TouchableOpacity>
+            {/* DateTimePickers para ensaio */}
+            {showEnsaioDatePicker && (
               <DateTimePicker
-                testID="datePickerEnsaio"
-                // Inicializa com a data atual do ensaio ou a data de hoje se vazia
-                value={dataEnsaio ? new Date(dataEnsaio) : new Date()}
+                value={form.dataEnsaio ? new Date(form.dataEnsaio) : new Date()}
                 mode="date"
                 display="default"
-                onChange={onChangeEnsaioDate}
+                onChange={onEnsaioDateChange}
               />
             )}
-
-            <TouchableOpacity onPress={() => setShowTimePickerEnsaio(true)}>
-              <TextInput
-                style={styles.input}
-                placeholder="Hora do ensaio: HH:MM"
-                value={horaEnsaio}
-                editable={false}
-              />
-            </TouchableOpacity>
-            {showTimePickerEnsaio && (
+            {showEnsaioTimePicker && (
               <DateTimePicker
-                testID="timePickerEnsaio"
-                // Usa uma data fictícia para inicializar o picker de tempo
-                value={horaEnsaio ? new Date(`2000-01-01T${horaEnsaio}`) : new Date()}
+                value={form.horaEnsaio ? new Date(`2000-01-01T${form.horaEnsaio}`) : new Date()}
                 mode="time"
-                is24Hour={true}
                 display="default"
-                onChange={onChangeEnsaioTime}
+                onChange={onEnsaioTimeChange}
               />
             )}
-          </View>
+          </>
         )}
-
-        {/* Título Músicos */}
-        <SectionTitle>Músicos</SectionTitle>
-        <MusicianList
-          musicians={ministrosEscalados.map(ministro => {
-            const dados = ministros.find(m => m.id === ministro.userId);
-            return {
-              userId: ministro.userId,
-              nome: dados?.nome || '',
-              foto: dados?.foto,
-              iniciais: getMinistroIniciaisById(ministro.userId),
-              areas: formatarAreas(ministro.areas),
-            };
-          })}
-          onEditAreas={m => openMinistroRolesModal(m.userId)}
-          onRemove={m => removerMinistroEscalado(m.userId)}
+        <SectionTitle style={{ marginTop: 24, marginBottom: 8 }}>Músicos</SectionTitle>
+        <MusicianGrid
+          musicians={form.ministros || []}
+          onAdd={() => setModals({ ...modals, selectMusician: true })}
+          onRemove={musico => {
+            if (musico.id !== auth.currentUser?.uid) {
+              setForm(prev => ({ ...prev, ministros: prev.ministros.filter(m => m.id !== musico.id) }));
+            }
+          }}
+          onEditArea={musico => {
+            setSelectedAreas(musico.areas || []);
+            setModals({ ...modals, selectArea: true, areaMusico: musico });
+          }}
         />
-
-        {/* Título Músicas */}
-        <Text style={styles.sectionTitle}>Músicas</Text>
-        <TouchableOpacity
-          style={styles.pickerInputSimulated}
-          onPress={() => setModalMusicasVisible(true)}
-        >
-          <Text style={styles.pickerInputSimulatedText}>Selecione as músicas</Text>
+        <SelectMusicianModal
+          visible={modals.selectMusician}
+          onClose={() => setModals({ ...modals, selectMusician: false })}
+          onSelect={onSelectMusician}
+          ministros={ministros.filter(m => !(form.ministros || []).some(e => e.id === m.id))}
+          ministrosEscalados={form.ministros || []}
+        />
+        <SelectAreaModal
+          visible={modals.selectArea}
+          onClose={() => { setModals({ ...modals, selectArea: false, areaMusico: null }); setSelectedAreas([]); }}
+          areaOptions={['Cantor(a)', 'Teclado', 'Guitarra', 'Baixo', 'Bateria', 'Violão', 'Backing Vocal', 'Apoio Técnico']}
+          selectedAreas={selectedAreas}
+          onToggleArea={onToggleArea}
+          onSave={onSaveAreas}
+        />
+        <SectionTitle style={{ marginTop: 24, marginBottom: 8 }}>Músicas</SectionTitle>
+        <TouchableOpacity onPress={() => setModals({ ...modals, selectMusic: true })}>
+          <Input
+            placeholder="Selecione as músicas"
+            value={getMusicasText()}
+            editable={false}
+            style={{ marginBottom: 8 }}
+          />
         </TouchableOpacity>
-
-        {/* Lista de Músicas Selecionadas */}
-        {musicasSelecionadas.map((musica, index) => {
-          const embedUrl = getYouTubeEmbedUrl(musica.video);
+        <SelectMusicModal
+          visible={modals.selectMusic}
+          onClose={() => setModals({ ...modals, selectMusic: false })}
+          musicas={musicas}
+          musicasSelecionadas={form.musicas}
+          onSelect={musica => {
+            if ((form.musicas || []).some(m => m.id === musica.id)) return;
+            setForm(prev => ({ ...prev, musicas: [...prev.musicas, musica] }));
+          }}
+        />
+        {(form.musicas || []).map((musica, idx) => {
+          const cantoresEscalados = (form.ministros || []).filter(m => (m.areas || []).includes('Cantor(a)'));
+          const cantoresDisponiveis = cantoresEscalados.filter(m => !(musica.cantores || []).some(c => c.id === m.id));
+          const cantoresSelecionadosIds = (musica.cantores || []).map(c => c.id);
           return (
-            <View key={index} style={styles.musicaCard}>
-              <Text style={styles.musicaTitle}>{index + 1}. {musica.musicaNome}</Text>
-              {musica.cifra && (
-                <TouchableOpacity onPress={() => handleOpenCifra(musica.cifra)}>
-                  <Text style={styles.musicaLink}>Cifra: {musica.cifra}</Text>
-                </TouchableOpacity>
-              )}
-              {musica.tom && ( // Exibe o tom da música se disponível
-                <Text style={styles.musicaSubTitle}>Tom: {musica.tom}</Text>
-              )}
-              <TextInput
-                style={styles.input}
-                placeholder="Link do vídeo (se já tiver cadastrado)"
-                value={musica.video}
-                onChangeText={(text) => updateMusicaVideoLink(index, text)}
+            <View key={musica.id || idx} style={{ backgroundColor: '#F7F7F7', borderRadius: 16, padding: 16, marginBottom: 18, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.white }}>
+              <Text style={{ fontWeight: 'bold', color: theme.colors.primary, fontSize: 15, marginBottom: 4 }}>{`${idx + 1}. ${musica.titulo || musica.nome}`}</Text>
+              <Input
+                label="Tom"
+                value={musica.tom || ''}
+                placeholder="Digite o tom da música"
+                onChangeText={text => {
+                  const musicas = [...form.musicas];
+                  musicas[idx] = { ...musicas[idx], tom: text };
+                  setForm({ ...form, musicas });
+                }}
+                style={{ marginBottom: 8 }}
               />
-              {/* WebView para o vídeo do YouTube */}
-              {embedUrl && (
-                <View style={styles.videoContainer}>
-                  <WebView
-                    style={styles.videoPlayer}
-                    javaScriptEnabled={true}
-                    domStorageEnabled={true}
-                    source={{ uri: embedUrl }}
-                  />
-                </View>
-              )}
-              <Text style={styles.musicaSubTitle}>Na voz de:</Text>
-              <View style={styles.cantoresContainer}>
-                {getCantoresSelecionadosParaMusica(index).map(cantorId => {
-                  const cantor = ministros.find(m => m.id === cantorId);
-                  if (!cantor) return null;
-                  return (
-                    <View key={cantorId} style={styles.cantorBox}>
-                      <TouchableOpacity
-                        style={styles.removeButton}
-                        onPress={() => removerCantorDaMusica(index, cantorId)}
-                      >
-                        <Text style={styles.removeButtonText}>×</Text>
-                      </TouchableOpacity>
-                      {cantor.foto ? ( // Usando 'cantor.foto'
-                        <Image source={{ uri: cantor.foto }} style={styles.avatar} />
-                      ) : (
-                        <View style={[styles.avatar, styles.avatarSemFoto]}>
-                          <Text style={styles.avatarIniciais}>
-                            {getMinistroIniciaisById(cantorId)}
-                          </Text>
+              <Input
+                label="Cifra"
+                value={musica.cifra || ''}
+                placeholder="Link da cifra"
+                onChangeText={text => {
+                  const musicas = [...form.musicas];
+                  musicas[idx] = { ...musicas[idx], cifra: text };
+                  setForm({ ...form, musicas });
+                }}
+                style={{ marginBottom: 8 }}
+              />
+              <Input
+                label="Vídeo"
+                value={musica.video || ''}
+                placeholder="Link do vídeo"
+                onChangeText={text => {
+                  const musicas = [...form.musicas];
+                  musicas[idx] = { ...musicas[idx], video: text };
+                  setForm({ ...form, musicas });
+                }}
+                style={{ marginBottom: 8 }}
+              />
+              <Text style={{ fontWeight: 'bold', color: theme.colors.primary, marginBottom: 6 }}>Na voz de:</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'flex-end', marginBottom: 8 }}>
+                {(musica.cantores && musica.cantores.length > 0) && (
+                  (musica.cantores || [])
+                    .filter(cantor => cantor && cantor.id)
+                    .map((cantor, cidx) => (
+                      <View key={cantor.id || cidx} style={{ alignItems: 'center', marginRight: 16, width: 64 }}>
+                        <View style={{ position: 'relative', marginBottom: 4, width: 48, height: 48, alignItems: 'center', justifyContent: 'center' }}>
+                          <Avatar uri={cantor.foto} initials={cantor.iniciais} size={54} style={{ borderWidth: 2, borderColor: theme.colors.secondary }} />
+                          <TouchableOpacity
+                            style={{ position: 'absolute', top: -10, left: -10, backgroundColor: theme.colors.white, borderRadius: 12, width: 24, height: 24, alignItems: 'center', justifyContent: 'center', zIndex: 2, borderWidth: 1, borderColor: theme.colors.primary }}
+                            onPress={() => {
+                              const musicas = [...form.musicas];
+                              musicas[idx].cantores = (musicas[idx].cantores || []).filter((_, i) => i !== cidx);
+                              setForm({ ...form, musicas });
+                            }}
+                          >
+                            <Text style={{ color: theme.colors.primary, fontWeight: 'bold' }}>×</Text>
+                          </TouchableOpacity>
                         </View>
-                      )}
-                      <Text style={styles.nomeCantor}>{cantor.nome}</Text>
-                    </View>
-                  );
-                })}
-                <TouchableOpacity onPress={() => openCantoresMusicaModal(index)} style={styles.cantorBox}>
-                  <View style={[styles.avatar, styles.avatarAdd]}>
-                    <Text style={{ fontSize: 30, color: theme.colors.secondary }}>+</Text>
+                        <Text style={{ fontSize: 13, color: theme.colors.primary, fontWeight: '600', textAlign: 'center', marginTop: 2 }} numberOfLines={1}>{cantor.nome}</Text>
+                      </View>
+                    ))
+                )}
+                {/* Botão para adicionar cantor sempre visível */}
+                <TouchableOpacity
+                  style={{ alignItems: 'center', width: 64, marginRight: 8 }}
+                  onPress={() => setModals({ ...modals, selectSinger: true, musicaIdx: idx })}
+                >
+                  <View style={{ alignItems: 'center', justifyContent: 'center', width: 54, height: 54, borderRadius: 32, borderWidth: 2, borderColor: theme.colors.secondary, backgroundColor: '#F3F7F5' }}>
+                    <Text style={{ fontSize: 32, color: theme.colors.secondary }}>+</Text>
                   </View>
-                  <Text style={styles.nomeCantor}>Adicionar</Text>
+                  <Text style={{ fontSize: 13, color: theme.colors.text, fontWeight: '600', textAlign: 'center', marginTop: 2 }}>Adicionar</Text>
                 </TouchableOpacity>
               </View>
-              <TouchableOpacity
-                style={styles.removeMusicaButton}
-                onPress={() => handleRemoverMusica(index)}
-              >
-                <Text style={styles.removeMusicaButtonText}>REMOVER MÚSICA</Text>
-              </TouchableOpacity>
+              <Button variant="secondary" onPress={() => {
+                setForm(prev => ({ ...prev, musicas: prev.musicas.filter((_, i) => i !== idx) }));
+              }} style={{ marginTop: 8 }} iconRight="trash-outline">
+                Remover Música
+              </Button>
+              <SelectSingerModal
+                visible={modals.selectSinger && modals.musicaIdx === idx}
+                onClose={() => setModals({ ...modals, selectSinger: false, musicaIdx: null })}
+                cantores={cantoresDisponiveis}
+                cantoresSelecionados={cantoresSelecionadosIds}
+                onToggle={cantorId => onAddSinger(idx, cantorId)}
+              />
             </View>
           );
         })}
-
-        {/* Botão Salvar Edição */}
-        <Button 
-          title="SALVAR EDIÇÃO DA ESCALA" 
-          onPress={salvarEdicaoEscala}
-          style={styles.button}
-          iconRight="checkmark-outline"
-        />
-
-                {/* Botão Deletar Escala */}
-        <Button 
-          title="DELETAR ESCALA" 
-          onPress={deletarEscala}
-          style={[styles.button, styles.deleteButton]}
-          iconRight="trash-outline"
-        />
-
-        {/* Modal para Adicionar Músicos */}
-        <SelectMusicianModal
-          visible={modalMinistrosVisible}
-          onClose={() => setModalMinistrosVisible(false)}
-          ministros={ministros}
-          ministrosEscalados={ministrosEscalados}
-          onSelect={handleAdicionarMinistro}
-          cantorSearchQuery={cantorSearchQuery}
-          setCantorSearchQuery={setCantorSearchQuery}
-        />
-
-        {/* Modal para Seleção de Músicas */}
-        <SelectMusicModal
-          visible={modalMusicasVisible}
-          onClose={() => setModalMusicasVisible(false)}
-          musicas={filteredMusicas}
-          musicasSelecionadas={musicasSelecionadas}
-          onSelect={handleAdicionarMusicas}
-          musicaSearchQuery={musicaSearchQuery}
-          setMusicaSearchQuery={setMusicaSearchQuery}
-        />
-
-        {/* Modal para Adicionar Cantores */}
-        <SelectSingerModal
-          visible={modalCantoresMusicaVisible}
-          onClose={() => setModalCantoresMusicaVisible(false)}
-          cantores={ministros.filter(m => ministrosEscalados.some(ms => ms.userId === m.id))}
-          cantoresSelecionados={getCantoresSelecionadosParaMusica(currentMusicIndexForSingers) || []}
-          onToggle={toggleCantorMusica}
-          getIniciais={getMinistroIniciaisById}
-        />
-
-        {/* Modal para Seleção de Áreas */}
-        <SelectAreaModal
-          visible={modalMinistroRolesVisible}
-          onClose={() => setModalMinistroRolesVisible(false)}
-          areaOptions={areaOptions}
-          selectedAreas={ministroRolesSelected}
-          onToggleArea={area => setMinistroRolesSelected(prev => prev.includes(area) ? prev.filter(a => a !== area) : [...prev, area])}
-          onSave={saveMinistroRoles}
+        <Button
+          title="SALVAR"
+          onPress={handleSaveEdicao}
+          style={{ marginTop: 24, marginBottom: 24 }}
+          iconRight="arrow-forward"
         />
       </ScrollView>
       <BottomTab navigation={navigation} />
-    </>
+    </View>
   );
 }
 
