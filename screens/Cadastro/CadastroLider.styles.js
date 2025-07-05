@@ -1,37 +1,107 @@
 import { StyleSheet, Platform } from 'react-native';
+import theme from '../../components/theme';
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8f8f8',
+    backgroundColor: '#F8F9FB',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    paddingTop: 40,
+  },
+  inputBox: {
+    position: 'relative',
+    marginBottom: 16,
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    marginBottom: 18,
+    paddingHorizontal: 18,
+    height: 56,
+    borderWidth: 1,
+    borderColor: '#E9ECEF',
+    shadowColor: 'transparent',
+    elevation: 0,
+  },
+  icon: {
+    marginRight: 10,
+    opacity: 0.5,
+  },
+  input: {
+    flex: 1,
+    fontSize: 16,
+    color: '#232D3F',
+    backgroundColor: 'transparent',
+    paddingVertical: 0,
+    paddingHorizontal: 0,
+  },
+  inputIcon: {
+    position: 'absolute',
+    left: 16,
+    top: 14,
+    zIndex: 2,
+  },
+  inputIconRight: {
+    position: 'absolute',
+    right: 16,
+    top: 14,
+    zIndex: 2,
+  },
+  cadastrarButton: {
+    flexDirection: 'row',
+    backgroundColor: '#233D35',
+    borderRadius: 16,
+    height: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 18,
+    marginBottom: 18,
+    shadowColor: '#B6C7D6',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  cadastrarButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 18,
+    letterSpacing: 0.5,
+  },
+  infoText: {
+    fontSize: 14,
+    color: '#222',
+    textAlign: 'center',
+    marginBottom: 8,
+    marginHorizontal: 2,
+  },
+  footerText: {
+    fontSize: 12,
+    color: '#232D3F',
+    textAlign: 'center',
+    marginBottom: 3,
+    marginHorizontal: 2,
+  },
+  errorText: {
+    color: '#E53935',
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  successText: {
+    color: '#22C55E',
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 8,
   },
   scrollViewContent: {
     flexGrow: 1,
     paddingHorizontal: 20,
     paddingTop: 30,
     paddingBottom: 20,
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    marginBottom: 15,
-    paddingHorizontal: 15,
-    height: 55,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  icon: {
-    marginRight: 10,
-  },
-  input: {
-    flex: 1,
-    fontSize: 16,
-    color: '#333',
   },
   selectDisplayText: {
     flex: 1,
@@ -43,23 +113,18 @@ const styles = StyleSheet.create({
   },
   eyeIcon: {
     paddingLeft: 10,
+    opacity: 0.5,
   },
   infoContainer: {
     marginBottom: 15,
     paddingHorizontal: 10,
-  },
-  infoText: {
-    fontSize: 14,
-    color: '#555',
-    textAlign: 'center',
-    fontWeight: '500',
   },
   messageContainer: {
     marginBottom: 15,
   },
   button: {
     flexDirection: 'row',
-    backgroundColor: '#2e4a3f',
+    backgroundColor: theme.colors.primary,
     borderRadius: 10,
     height: 55,
     justifyContent: 'center',
@@ -71,13 +136,13 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   buttonText: {
-    color: 'white',
+    color: theme.colors.white,
     fontSize: 18,
     fontWeight: 'bold',
     marginRight: 10,
   },
   buttonIcon: {
-    marginLeft: 5,
+    marginLeft: 8,
   },
   errorMessage: {
     color: 'red',
@@ -101,12 +166,6 @@ const styles = StyleSheet.create({
     color: '#666',
     marginBottom: 5,
     fontWeight: 'bold',
-  },
-  footerText: {
-    fontSize: 14,
-    color: '#333',
-    textAlign: 'center',
-    marginBottom: 3,
   },
   // Modal
   modalOverlay: {

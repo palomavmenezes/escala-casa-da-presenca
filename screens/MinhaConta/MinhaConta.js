@@ -9,6 +9,7 @@ import {
   Image,
   Alert,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { auth, db } from '../../services/firebase';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -17,20 +18,30 @@ import * as ImagePicker from 'expo-image-picker';
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { Ionicons } from '@expo/vector-icons';
 import styles from './MinhaConta.styles'; // Importa os estilos
+import SectionTitle from '../../components/ui/SectionTitle';
+import Button from '../../components/ui/Button';
+import Input from '../../components/ui/Input';
+import Avatar from '../../components/ui/Avatar';
+import theme from '../../components/theme';
+import { useUser } from '../../contexts/UserContext';
 
 export default function MinhaConta() {
   const navigation = useNavigation();
-  const [userProfile, setUserProfile] = useState(null);
+  const { userProfile } = useUser();
+  const isLider = userProfile?.isLider === true;
+  const [logo, setLogo] = useState(null);
+  const [nomeIgreja, setNomeIgreja] = useState('');
   const [nome, setNome] = useState('');
   const [sobrenome, setSobrenome] = useState('');
   const [email, setEmail] = useState(''); // Email geralmente não é editável diretamente
-  const [area, setArea] = useState('');
+  const [telefone, setTelefone] = useState(''); // Campo telefone
   const [foto, setFoto] = useState(null); // URL da foto
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [churchId, setChurchId] = useState(null);
   const [instrumentOptions, setInstrumentOptions] = useState([]); // Opções dinâmicas de instrumentos/roles
   const [selectedInstruments, setSelectedInstruments] = useState([]); // Instrumentos selecionados pelo usuário
+  const [novaLogoIgreja, setNovaLogoIgreja] = useState(null);
 
   const instrumentOptionsList = ['Vocal', 'Violão', 'Guitarra', 'Baixo', 'Bateria', 'Teclado', 'Backing Vocal', 'Apoio Técnico'];
 
@@ -51,26 +62,29 @@ export default function MinhaConta() {
       const igrejasSnapshot = await getDocs(collection(db, 'igrejas'));
       for (const docIgreja of igrejasSnapshot.docs) {
         const userDocRef = doc(db, 'igrejas', docIgreja.id, 'usuarios', currentUser.uid);
+
         const userDocSnap = await getDoc(userDocRef);
         if (userDocSnap.exists()) {
           userData = userDocSnap.data();
           foundIgrejaId = docIgreja.id;
+
           break;
         }
       }
 
       if (userData && foundIgrejaId) {
         setChurchId(foundIgrejaId);
-        setUserProfile({ id: currentUser.uid, ...userData });
         setNome(userData.nome || '');
         setSobrenome(userData.sobrenome || '');
-        setEmail(currentUser.email || ''); // O email vem do auth, não do perfil do Firestore
-        setArea(userData.area || ''); // Área principal
-        setFoto(userData.foto || null);
-        setSelectedInstruments(userData.instruments || []); // Carrega instrumentos já selecionados
+        setEmail(currentUser.email || '');
+        setTelefone(userData.telefone || '');
+        // Garantir que a foto seja uma string válida ou null
+        const fotoUrl = userData.foto && typeof userData.foto === 'string' && userData.foto.trim() !== '' ? userData.foto : null;
+        setFoto(fotoUrl);
+        setSelectedInstruments(userData.instruments || []);
       } else {
         Alert.alert('Erro', 'Perfil de usuário não encontrado no Firestore.');
-        navigation.goBack(); // Volta se não encontrar o perfil
+        navigation.goBack();
       }
     } catch (e) {
       console.error("Erro ao buscar perfil do usuário:", e);
@@ -95,18 +109,41 @@ export default function MinhaConta() {
     }, [fetchUserProfile])
   );
 
+  useEffect(() => {
+    if (userProfile?.igrejaId) {
+      // Buscar dados da igreja
+      const fetchIgreja = async () => {
+        const igrejaDoc = await getDoc(doc(db, 'igrejas', userProfile.igrejaId));
+        if (igrejaDoc.exists()) {
+          const data = igrejaDoc.data();
+          setLogo(data.logo || null);
+          setNomeIgreja(data.nomeIgreja || '');
+        }
+      };
+      fetchIgreja();
+    }
+  }, [userProfile?.igrejaId]);
+
   const handleChoosePhoto = async () => {
     let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaType.Images,
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.8,
     });
 
-    if (!result.canceled) {
-      const uri = result.assets[0].uri;
-      setFoto(uri); // Atualiza a pré-visualização instantaneamente
-      await uploadProfilePhoto(uri);
+    let selectedUri;
+
+    if (result?.assets && result.assets.length > 0) {
+      selectedUri = result.assets[0].uri;
+    } else if (result?.uri) {
+      selectedUri = result.uri;
+    }
+
+    if (selectedUri) {
+      await uploadProfilePhoto(selectedUri);
+    } else if (!result.canceled) {
+      Alert.alert("Erro", "Não foi possível selecionar a imagem.");
     }
   };
 
@@ -118,7 +155,8 @@ export default function MinhaConta() {
 
     setLoading(true);
     const storage = getStorage();
-    const fileName = `profile_pictures/${auth.currentUser.uid}`; // Nome do arquivo no Storage
+    // Novo caminho organizado por igreja e usuário
+    const fileName = `igrejas/${churchId}/usuarios/${auth.currentUser.uid}/fotoPerfil.jpg`;
     const storageRef = ref(storage, fileName);
 
     try {
@@ -127,7 +165,7 @@ export default function MinhaConta() {
         const oldPhotoRef = ref(storage, userProfile.foto);
         try {
           await deleteObject(oldPhotoRef);
-          console.log("Foto antiga deletada com sucesso.");
+
         } catch (e) {
           console.warn("Não foi possível deletar foto antiga (pode não existir ou permissão).", e);
         }
@@ -143,7 +181,7 @@ export default function MinhaConta() {
       const userDocRef = doc(db, 'igrejas', churchId, 'usuarios', auth.currentUser.uid);
       await updateDoc(userDocRef, { foto: newPhotoURL });
 
-      setUserProfile(prev => ({ ...prev, foto: newPhotoURL })); // Atualiza o estado
+      setFoto(newPhotoURL);
       Alert.alert('Sucesso', 'Foto de perfil atualizada!');
     } catch (e) {
       console.error("Erro ao fazer upload ou atualizar foto:", e);
@@ -181,7 +219,6 @@ export default function MinhaConta() {
               await updateDoc(userDocRef, { foto: null }); // Remove o campo foto no Firestore
 
               setFoto(null); // Limpa a pré-visualização
-              setUserProfile(prev => ({ ...prev, foto: null }));
               Alert.alert('Sucesso', 'Foto de perfil removida!');
             } catch (e) {
               console.error("Erro ao remover foto:", e);
@@ -195,26 +232,62 @@ export default function MinhaConta() {
     );
   };
 
+  const handleChooseLogo = async () => {
+    if (!isEditing || !userProfile?.isLider || !userProfile?.igrejaId) return;
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (result.canceled) return;
+    let selectedUri = result?.assets && result.assets.length > 0 ? result.assets[0].uri : result.uri;
+    if (!selectedUri) {
+      Alert.alert('Erro', 'Não foi possível selecionar a imagem.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const storage = getStorage();
+      const fileName = `igrejas/${userProfile.igrejaId}/logo.jpg`;
+      const storageRef = ref(storage, fileName);
+      const response = await fetch(selectedUri);
+      const blob = await response.blob();
+      await uploadBytes(storageRef, blob);
+      const newLogoURL = await getDownloadURL(storageRef);
+      setNovaLogoIgreja(newLogoURL);
+      Alert.alert('Sucesso', 'Logo enviada! Clique em Salvar para aplicar.');
+    } catch (e) {
+      console.error('Erro real ao enviar logo:', e);
+      Alert.alert('Erro', 'Não foi possível enviar a logo.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSaveProfile = async () => {
     if (!auth.currentUser || !churchId) {
       Alert.alert('Erro', 'Usuário não autenticado ou ID da igreja ausente.');
       return;
     }
-
     setLoading(true);
     try {
       const userDocRef = doc(db, 'igrejas', churchId, 'usuarios', auth.currentUser.uid);
       await updateDoc(userDocRef, {
         nome: nome,
         sobrenome: sobrenome,
-        area: area,
-        instruments: selectedInstruments, // Salva os instrumentos selecionados
+        telefone: telefone,
+        instruments: selectedInstruments,
       });
-      setUserProfile(prev => ({ ...prev, nome, sobrenome, area, instruments: selectedInstruments }));
-      setIsEditing(false); // Sai do modo de edição
+      if (novaLogoIgreja && isLider) {
+
+        await updateDoc(doc(db, 'igrejas', churchId), { logo: novaLogoIgreja });
+        setLogo(novaLogoIgreja);
+        setNovaLogoIgreja(null);
+      }
+      setIsEditing(false);
       Alert.alert('Sucesso', 'Seu perfil foi atualizado!');
     } catch (e) {
-      console.error("Erro ao salvar perfil:", e);
       Alert.alert('Erro', `Não foi possível salvar seu perfil. ${e.message}`);
     } finally {
       setLoading(false);
@@ -248,28 +321,22 @@ export default function MinhaConta() {
     return (
       <View style={styles.errorContainer}>
         <Text style={styles.errorText}>Não foi possível carregar o perfil do usuário.</Text>
-        <TouchableOpacity style={styles.button} onPress={() => navigation.goBack()}>
-          <Text style={styles.buttonText}>Voltar</Text>
-        </TouchableOpacity>
+        <Button onPress={() => navigation.goBack()} iconLeft="arrow-back" style={styles.button}>
+          Voltar
+        </Button>
       </View>
     );
   }
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-        <Ionicons name="arrow-back" size={24} color="#333" />
-      </TouchableOpacity>
-      <Text style={styles.header}>Minha Conta</Text>
-
       <View style={styles.profileImageContainer}>
-        {foto ? (
-          <Image source={{ uri: foto }} style={styles.profileImage} />
-        ) : (
-          <View style={styles.initialsPlaceholder}>
-            <Text style={styles.initialsText}>{getInitials(nome, sobrenome)}</Text>
-          </View>
-        )}
+        <Avatar 
+          foto={foto}
+          nome={nome}
+          sobrenome={sobrenome}
+          size={120}
+        />
         {isEditing && (
           <View style={styles.photoActionButtons}>
             <TouchableOpacity style={styles.changePhotoButton} onPress={handleChoosePhoto}>
@@ -288,7 +355,7 @@ export default function MinhaConta() {
 
       <View style={styles.inputGroup}>
         <Text style={styles.label}>Nome:</Text>
-        <TextInput
+        <Input
           style={isEditing ? styles.inputEditable : styles.inputDisplay}
           value={nome}
           onChangeText={setNome}
@@ -298,7 +365,7 @@ export default function MinhaConta() {
 
       <View style={styles.inputGroup}>
         <Text style={styles.label}>Sobrenome:</Text>
-        <TextInput
+        <Input
           style={isEditing ? styles.inputEditable : styles.inputDisplay}
           value={sobrenome}
           onChangeText={setSobrenome}
@@ -308,7 +375,7 @@ export default function MinhaConta() {
 
       <View style={styles.inputGroup}>
         <Text style={styles.label}>Email:</Text>
-        <TextInput
+        <Input
           style={styles.inputDisplay}
           value={email}
           editable={false} // Email não editável diretamente
@@ -316,13 +383,14 @@ export default function MinhaConta() {
       </View>
 
       <View style={styles.inputGroup}>
-        <Text style={styles.label}>Área Principal (Ex: Vocal, Bateria):</Text>
-        <TextInput
+        <Text style={styles.label}>Telefone:</Text>
+        <Input
           style={isEditing ? styles.inputEditable : styles.inputDisplay}
-          value={area}
-          onChangeText={setArea}
+          value={telefone}
+          onChangeText={setTelefone}
           editable={isEditing}
-          placeholder="Sua principal área no ministério"
+          placeholder="Digite seu telefone"
+          keyboardType="phone-pad"
         />
       </View>
 
@@ -351,22 +419,39 @@ export default function MinhaConta() {
         </View>
       )}
 
+      {isLider && (
+        <View style={{ alignItems: 'center', marginBottom: 24 }}>
+          {(novaLogoIgreja || logo) ? (
+            <Image source={{ uri: novaLogoIgreja || logo }} style={{ width: 100, height: 100, borderRadius: 50, marginBottom: 8 }} />
+          ) : (
+            <View style={{ width: 100, height: 100, borderRadius: 50, backgroundColor: '#eee', alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
+              <Text style={{ color: '#888', fontWeight: 'bold', fontSize: 18 }}>{nomeIgreja || 'Sua Igreja'}</Text>
+            </View>
+          )}
+          {isEditing && (
+            <TouchableOpacity style={styles.changePhotoButton} onPress={handleChooseLogo}>
+              <Ionicons name="camera" size={20} color="#fff" />
+              <Text style={styles.changePhotoText}>Alterar Imagem da Igreja</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
 
       {!isEditing ? (
-        <TouchableOpacity style={styles.editButton} onPress={() => setIsEditing(true)}>
-          <Text style={styles.buttonText}>Editar Perfil</Text>
-        </TouchableOpacity>
+        <Button style={styles.editButton} onPress={() => setIsEditing(true)} iconRight="create-outline">
+          Editar Perfil
+        </Button>
       ) : (
         <View style={styles.actionButtons}>
-          <TouchableOpacity style={styles.saveButton} onPress={handleSaveProfile}>
-            <Text style={styles.buttonText}>Salvar</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.cancelButton} onPress={() => {
+          <Button style={styles.saveButton} onPress={handleSaveProfile} iconRight="checkmark-outline">
+            Salvar
+          </Button>
+          <Button style={styles.cancelButton} onPress={() => {
             setIsEditing(false);
             fetchUserProfile(); // Recarrega os dados originais para descartar edições
-          }}>
-            <Text style={styles.buttonText}>Cancelar</Text>
-          </TouchableOpacity>
+          }} iconRight="close-outline">
+            Cancelar
+          </Button>
         </View>
       )}
     </ScrollView>

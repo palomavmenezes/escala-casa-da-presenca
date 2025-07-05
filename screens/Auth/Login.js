@@ -19,6 +19,7 @@ import { AntDesign, Feather } from '@expo/vector-icons';
 import { auth, db } from '../../services/firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, getDoc, getDocs, query, collectionGroup, where } from 'firebase/firestore';
+import Button from '../../components/ui/Button';
 
 export default function Login({ navigation }) {
   const [email, setEmail] = useState('');
@@ -114,7 +115,10 @@ export default function Login({ navigation }) {
       }
 
       if (autenticacaoPermitida) {
-        navigation.navigate('Home', { userId: user.uid, igrejaId: igrejaIdDoUsuario, isLider: isLider });
+        // Pequeno delay para permitir que o UserContext carregue os dados
+        setTimeout(() => {
+          navigation.navigate('Home', { userId: user.uid, igrejaId: igrejaIdDoUsuario, isLider: isLider });
+        }, 300);
       } else {
         await auth.signOut();
         Alert.alert(
@@ -221,16 +225,14 @@ export default function Login({ navigation }) {
               </TouchableOpacity>
             </View>
 
-            <TouchableOpacity style={styles.loginButton} onPress={handleLogin} disabled={isLoading}>
-              {isLoading ? (
-                <ActivityIndicator color="white" size="small" />
-              ) : (
-                <>
-                  <Text style={styles.loginButtonText}>ENTRAR</Text>
-                  <AntDesign name="arrowright" size={20} color="white" style={styles.loginButtonIcon} />
-                </>
-              )}
-            </TouchableOpacity>
+            <Button 
+              title="ENTRAR"
+              onPress={handleLogin} 
+              disabled={isLoading}
+              loading={isLoading}
+              style={{ marginBottom: 40 }}
+              iconRight={!isLoading ? "arrow-forward" : null}
+            />
 
             <View style={styles.registerOptionsContainer}>
               <Text style={styles.registerPromptText}>Não tem uma conta?</Text>
@@ -239,14 +241,18 @@ export default function Login({ navigation }) {
                   style={[styles.registerButton, styles.leaderCadastroLiderButton]}
                   onPress={() => navigation.navigate('CadastroLider')}
                 >
-                  <Text style={styles.registerButtonText}>Cadastrar como Líder</Text>
+                  <View style={styles.buttonContent}>
+                    <Text style={styles.registerButtonText}>Cadastrar como Líder</Text>
+                  </View>
                 </TouchableOpacity>
 
                 <TouchableOpacity
                   style={[styles.registerButton, styles.memberCadastroLiderButton]}
                   onPress={() => navigation.navigate('CadastroMembro')}
                 >
-                  <Text style={styles.registerButtonText}>Cadastrar como Membro</Text>
+                  <View style={styles.buttonContent}>
+                    <Text style={styles.registerButtonText}>Cadastrar como Membro</Text>
+                  </View>
                 </TouchableOpacity>
               </View>
             </View>

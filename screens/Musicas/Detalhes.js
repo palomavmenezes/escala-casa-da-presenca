@@ -5,7 +5,7 @@ import {
 import { WebView } from 'react-native-webview';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import BottomTab from '../../components/BottomTab';
+import BottomTab from '../../components/layout/BottomTab';
 import { db, auth } from '../../services/firebase'; // Import auth
 import { doc, getDoc, deleteDoc } from 'firebase/firestore'; // Import doc, getDoc, deleteDoc
 
@@ -153,9 +153,9 @@ export default function Detalhes() {
     return (
       <View style={styles.errorContainer}>
         <Text style={styles.errorText}>{telaErro}</Text>
-        <TouchableOpacity style={styles.button} onPress={() => navigation.goBack()}>
-          <Text style={styles.buttonText}>Voltar</Text>
-        </TouchableOpacity>
+        <Button onPress={() => navigation.goBack()} iconLeft="arrow-back" style={styles.button}>
+          Voltar
+        </Button>
       </View>
     );
   }
@@ -198,7 +198,7 @@ export default function Detalhes() {
           {musica.cifra && (
             <TouchableOpacity style={styles.botaoCifra} onPress={abrirCifraExterna}>
               <Ionicons name="musical-notes" size={20} color="#fff" />
-              <Text style={styles.textoBotao}>Abrir Cifra no Cifra Club</Text>
+              <Text style={styles.textoBotao}>Abrir no Cifra Club</Text>
             </TouchableOpacity>
           )}
 
@@ -266,6 +266,14 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.23,
     shadowRadius: 2.62,
     width: '80%',
+  },
+  buttonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  buttonIcon: {
+    marginRight: 8,
   },
   buttonText: { // Reused for error screen button
     color: 'white',

@@ -25,7 +25,7 @@ import {
   updateDoc, // Import updateDoc for editing
   deleteDoc, // Import deleteDoc for deleting
 } from 'firebase/firestore';
-import BottomTab from '../../components/BottomTab';
+import BottomTab from '../../components/layout/BottomTab';
 import { Ionicons } from '@expo/vector-icons'; // Import Ionicons for icons on buttons
 
 export default function EditarMusica() {
@@ -232,9 +232,9 @@ export default function EditarMusica() {
     return (
       <View style={styles.errorContainer}>
         <Text style={styles.errorText}>{telaErro}</Text>
-        <TouchableOpacity style={styles.button} onPress={() => navigation.goBack()}>
-          <Text style={styles.buttonText}>Voltar</Text>
-        </TouchableOpacity>
+        <Button onPress={() => navigation.goBack()} iconLeft="arrow-back" style={styles.button}>
+          Voltar
+        </Button>
       </View>
     );
   }
@@ -242,11 +242,11 @@ export default function EditarMusica() {
   return (
     <>
       <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.header}>Editar Louvor</Text>
+        <Text style={styles.header}>Editar Música</Text>
 
         <TextInput
           style={styles.input}
-          placeholder="Nome do louvor"
+          placeholder="Nome da música"
           value={nome}
           onChangeText={setNome} />
         <TextInput
@@ -308,7 +308,6 @@ export default function EditarMusica() {
                   </View>
                 )}
                 <Text style={styles.nomeCantor}>{cantor.nome}</Text>
-                <Text style={styles.subtituloCantor}>{cantor.area}</Text>
               </View>
             );
           })}
@@ -378,7 +377,7 @@ export default function EditarMusica() {
                             </Text>
                           </View>
                         )}
-                        <Text style={{ marginLeft: 10 }}>{m.nome} ({m.area})</Text>
+                        <Text style={{ marginLeft: 10 }}>{m.nome}</Text>
                       </TouchableOpacity>
                     ))
                 )}
@@ -500,11 +499,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#444',
   },
-  subtituloCantor: {
-    fontSize: 11,
-    color: '#666',
-    textAlign: 'center',
-  },
   removeButton: {
     position: 'absolute',
     top: 0,
@@ -539,6 +533,14 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.23,
     shadowRadius: 2.62,
+  },
+  buttonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  buttonIcon: {
+    marginRight: 8,
   },
   buttonText: {
     color: 'white',

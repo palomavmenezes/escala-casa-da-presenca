@@ -16,7 +16,10 @@ import { WebView } from 'react-native-webview';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { db, auth } from '../../services/firebase';
 import { collection, addDoc, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
-import BottomTab from '../../components/BottomTab';
+import BottomTab from '../../components/layout/BottomTab';
+
+import Button from '../../components/ui/Button';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function AdicionarMusica() {
   const navigation = useNavigation();
@@ -26,6 +29,7 @@ export default function AdicionarMusica() {
   const [cantorOriginal, setCantorOriginal] = useState('');
   const [cifra, setCifra] = useState('');
   const [cifraConteudo, setCifraConteudo] = useState('');
+  const [letra, setLetra] = useState('');
   const [video, setVideo] = useState('');
   const [tom, setTom] = useState('');
   const [cantores, setCantores] = useState([]);
@@ -41,6 +45,11 @@ export default function AdicionarMusica() {
   const [filteredCantores, setFilteredCantores] = useState([]);
 
   useEffect(() => {
+    // Definir o título da tela
+    navigation.setOptions({
+      title: 'Cadastrando Música'
+    });
+
     const fetchUserAndChurchData = async () => {
       setIsLoading(true);
       setTelaErro('');
@@ -102,8 +111,7 @@ export default function AdicionarMusica() {
       const lowerCaseQuery = cantorSearchQuery.toLowerCase();
       const filtered = usuariosIgrejaDisponiveis.filter(user =>
         user.nome.toLowerCase().includes(lowerCaseQuery) ||
-        (user.sobrenome && user.sobrenome.toLowerCase().includes(lowerCaseQuery)) ||
-        (user.area && user.area.toLowerCase().includes(lowerCaseQuery))
+        (user.sobrenome && user.sobrenome.toLowerCase().includes(lowerCaseQuery))
       );
       setFilteredCantores(filtered);
     } else {
@@ -144,6 +152,7 @@ export default function AdicionarMusica() {
         cantorOriginal: cantorOriginal.trim(),
         cifra: cifra.trim(),
         cifraConteudo: cifraConteudo.trim(),
+        letra: letra.trim(),
         video: video.trim(),
         tom: tom.trim(),
         cantores: cantores,
@@ -157,6 +166,7 @@ export default function AdicionarMusica() {
       setCantorOriginal('');
       setCifra('');
       setCifraConteudo('');
+      setLetra('');
       setVideo('');
       setTom('');
       setCantores([]);
@@ -166,6 +176,9 @@ export default function AdicionarMusica() {
       Alert.alert('Erro', `Não foi possível salvar a música. ${e.message}. Verifique suas permissões.`);
     }
   };
+
+  // Função para obter dados completos dos cantores selecionados
+  const cantoresSelecionados = cantores.map(id => getUsuarioInfoById(id)).filter(Boolean);
 
   if (isLoading) {
     return (
@@ -180,9 +193,9 @@ export default function AdicionarMusica() {
     return (
       <View style={styles.errorContainer}>
         <Text style={styles.errorText}>{telaErro}</Text>
-        <TouchableOpacity style={styles.button} onPress={() => navigation.goBack()}>
-          <Text style={styles.buttonText}>Voltar</Text>
-        </TouchableOpacity>
+        <Button onPress={() => navigation.goBack()} iconLeft="arrow-back" style={styles.button}>
+          Voltar
+        </Button>
       </View>
     );
   }
@@ -190,157 +203,62 @@ export default function AdicionarMusica() {
   return (
     <>
       <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.header}>Cadastrar Louvor</Text>
-
+        <Text style={[styles.header, { textAlign: 'left', fontSize: 22, marginBottom: 18 }]}>Dados da música</Text>
         <TextInput
           style={styles.input}
-          placeholder="Nome do louvor"
+          placeholder="Nome da música"
           value={nome}
-          onChangeText={setNome} />
+          onChangeText={setNome}
+          autoCapitalize="words"
+          autoCorrect={false}
+          autoComplete="off"
+        />
         <TextInput
           style={styles.input}
-          placeholder="Nome do cantor original"
+          placeholder="Nome do cantor"
           value={cantorOriginal}
-          onChangeText={setCantorOriginal} />
+          onChangeText={setCantorOriginal}
+          autoCapitalize="words"
+          autoCorrect={false}
+          autoComplete="off"
+        />
         <TextInput
           style={styles.input}
-          placeholder="Link do cifraclub (opcional)"
+          placeholder="Link do cifraclub"
           value={cifra}
           onChangeText={setCifra}
-          keyboardType="url" />
-
+        />
+        <TextInput
+          style={styles.input}
+          placeholder="Link do vídeo (versão)"
+          value={video}
+          onChangeText={setVideo}
+        />
+        <TextInput
+          style={styles.input}
+          placeholder="Tom"
+          value={tom}
+          onChangeText={setTom}
+        />
         <TextInput
           style={[styles.input, styles.cifraConteudoInput]}
-          placeholder="Cole ou digite a cifra/letra aqui..."
-          value={cifraConteudo}
-          onChangeText={setCifraConteudo}
-          multiline={true}
-          numberOfLines={8}
+          placeholder="Letra da música"
+          value={letra}
+          onChangeText={setLetra}
+          multiline
           textAlignVertical="top"
         />
 
-        <TextInput
-          style={styles.input}
-          placeholder="Link do vídeo (versão YouTube)"
-          value={video}
-          onChangeText={setVideo}
-          keyboardType="url" />
-        <TextInput
-          style={styles.input}
-          placeholder="Tom da música"
-          value={tom}
-          onChangeText={setTom} />
 
-        <Text style={styles.sectionTitle}>Nas vozes de:</Text>
-        <View style={styles.cantoresContainer}>
-          {cantores.map(id => {
-            const cantor = getUsuarioInfoById(id);
-            if (!cantor) return null;
-
-            return (
-              <View key={id} style={styles.cantorBox}>
-                <TouchableOpacity
-                  style={styles.removeButton}
-                  onPress={() => toggleCantor(id)}
-                >
-                  <Text style={styles.removeButtonText}>×</Text>
-                </TouchableOpacity>
-
-                {cantor.foto ? (
-                  <Image source={{ uri: cantor.foto }} style={styles.avatar} />
-                ) : (
-                  <View style={[styles.avatar, styles.avatarSemFoto]}>
-                    <Text style={styles.avatarIniciais}>
-                      {cantor.nome
-                        .split(' ')
-                        .slice(0, 2)
-                        .map(p => p[0].toUpperCase())
-                        .join('')}
-                    </Text>
-                  </View>
-                )}
-                <Text style={styles.nomeCantor}>{cantor.nome}</Text>
-                <Text style={styles.subtituloCantor}>{cantor.area}</Text>
-              </View>
-            );
-          })}
-
-          <TouchableOpacity onPress={() => setModalUsuariosVisible(true)} style={styles.cantorBox}>
-            <View style={[styles.avatar, styles.avatarAdd]}>
-              <Text style={{ fontSize: 30, color: '#6ACF9E' }}>+</Text>
-            </View>
-            <Text style={styles.nomeCantor}>Adicionar</Text>
-          </TouchableOpacity>
-        </View>
-
-        <TouchableOpacity style={styles.button} onPress={salvarMusica}>
-          <Text style={styles.buttonText}>CADASTRAR LOUVOR</Text>
-        </TouchableOpacity>
-
-        <Modal
-          visible={modalUsuariosVisible}
-          transparent
-          animationType="slide"
-          onRequestClose={() => {
-            setModalUsuariosVisible(false);
-            setCantorSearchQuery(''); // Clear search on modal close
-          }}
-        >
-          <View style={styles.modalContainer}>
-            <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>Adicionar Músicos</Text>
-              {/* NEW: Search input in the modal */}
-              <TextInput
-                style={styles.input}
-                placeholder="Buscar por nome ou área..."
-                value={cantorSearchQuery}
-                onChangeText={setCantorSearchQuery}
-              />
-              <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
-                {filteredCantores.length === 0 ? ( // Use filteredCantores
-                  <Text style={styles.noResultsText}>Nenhum usuário ativo encontrado.</Text>
-                ) : (
-                  filteredCantores // Use filteredCantores
-                    .map(m => (
-                      <TouchableOpacity
-                        key={m.id}
-                        onPress={() => {
-                          toggleCantor(m.id);
-                          setModalUsuariosVisible(false);
-                        }}
-                        style={[
-                          styles.modalItem,
-                          cantores.includes(m.id) && styles.modalItemSelected
-                        ]}
-                      >
-                        {m.foto ? (
-                          <Image source={{ uri: m.foto }} style={styles.avatar} />
-                        ) : (
-                          <View style={[styles.avatar, styles.avatarSemFoto]}>
-                            <Text style={styles.avatarIniciais}>
-                              {m.nome
-                                .split(' ')
-                                .slice(0, 2)
-                                .map(p => p[0].toUpperCase())
-                                .join('')}
-                            </Text>
-                          </View>
-                        )}
-                        <Text style={{ marginLeft: 10 }}>{m.nome} ({m.area})</Text>
-                      </TouchableOpacity>
-                    ))
-                )}
-              </ScrollView>
-              <TouchableOpacity style={styles.button} onPress={() => {
-                setModalUsuariosVisible(false);
-                setCantorSearchQuery(''); // Clear search on close
-              }}>
-                <Text style={styles.buttonText}>FECHAR</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Modal>
+        <Button
+          title="CADASTRAR"
+          onPress={salvarMusica}
+          variant="primary"
+          style={{ marginTop: 18 }}
+          iconRight="arrow-forward"
+        />
       </ScrollView>
+
       <BottomTab navigation={navigation} />
     </>
   );

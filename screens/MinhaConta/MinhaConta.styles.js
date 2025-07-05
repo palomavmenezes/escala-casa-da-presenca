@@ -1,10 +1,11 @@
 // screens/MinhaConta/MinhaConta.styles.js
 import { StyleSheet } from 'react-native';
+import theme from '../../components/theme';
 
 const styles = StyleSheet.create({
   container: {
     flexGrow: 1, // Permite que o ScrollView cresça e ocupe o espaço
-    backgroundColor: '#F5F6FA', // Cor de fundo suave
+    backgroundColor: theme.colors.background, // Cor de fundo suave
     padding: 20,
     alignItems: 'center', // Centraliza o conteúdo horizontalmente
     paddingBottom: 40, // Espaço na parte inferior para o scroll
@@ -17,7 +18,7 @@ const styles = StyleSheet.create({
   header: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#1F2937', // Tonalidade escura para o texto
+    color: theme.colors.text, // Tonalidade escura para o texto
     marginBottom: 30,
     textAlign: 'center',
   },
@@ -25,19 +26,19 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F5F6FA',
+    backgroundColor: theme.colors.background,
   },
   loadingText: {
     marginTop: 10,
     fontSize: 16,
-    color: '#003D29',
+    color: theme.colors.primary,
   },
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
-    backgroundColor: '#F5F6FA',
+    backgroundColor: theme.colors.background,
   },
   errorText: {
     textAlign: 'center',
@@ -46,7 +47,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   button: { // Estilo geral para botões (como o "Voltar" de erro)
-    backgroundColor: '#6ACF9E',
+    backgroundColor: theme.colors.primary,
     paddingVertical: 14,
     borderRadius: 10,
     alignItems: 'center',
@@ -54,8 +55,16 @@ const styles = StyleSheet.create({
     width: '80%',
     elevation: 3,
   },
+  buttonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  buttonIcon: {
+    marginRight: 8,
+  },
   buttonText: {
-    color: '#fff',
+    color: theme.colors.white,
     fontSize: 18,
     fontWeight: 'bold',
   },
@@ -70,8 +79,8 @@ const styles = StyleSheet.create({
     height: 120,
     borderRadius: 60, // Para a imagem ser circular
     borderWidth: 3,
-    borderColor: '#6ACF9E', // Borda verde para a foto de perfil
-    backgroundColor: '#E5E7EB', // Cor de fundo para fallback
+    borderColor: theme.colors.primary, // Borda verde para a foto de perfil
+    backgroundColor: theme.colors.background, // Cor de fundo para fallback
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -79,16 +88,16 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: '#D1FAE5', // Cor de fundo para as iniciais
+    backgroundColor: theme.colors.secondary, // Cor de fundo para as iniciais
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 3,
-    borderColor: '#6ACF9E',
+    borderColor: theme.colors.primary,
   },
   initialsText: {
     fontSize: 48,
     fontWeight: 'bold',
-    color: '#003D29', // Cor das iniciais
+    color: theme.colors.text, // Cor das iniciais
   },
   photoActionButtons: {
     flexDirection: 'row',
@@ -97,7 +106,7 @@ const styles = StyleSheet.create({
   },
   changePhotoButton: {
     flexDirection: 'row',
-    backgroundColor: '#007AFF', // Azul para alterar
+    backgroundColor: theme.colors.primary, // Azul para alterar
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 20,
@@ -105,13 +114,13 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   changePhotoText: {
-    color: '#fff',
+    color: theme.colors.white,
     fontSize: 14,
     fontWeight: 'bold',
   },
   removePhotoButton: {
     flexDirection: 'row',
-    backgroundColor: '#FF3B30', // Vermelho para remover
+    backgroundColor: theme.colors.error, // Vermelho para remover
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 20,
@@ -119,7 +128,7 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   removePhotoText: {
-    color: '#fff',
+    color: theme.colors.white,
     fontSize: 14,
     fontWeight: 'bold',
   },
@@ -131,27 +140,27 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 16,
-    color: '#374151',
+    color: theme.colors.text,
     marginBottom: 5,
     fontWeight: '600',
   },
   inputDisplay: {
-    backgroundColor: '#E5E7EB', // Fundo cinza claro para não editável
+    backgroundColor: theme.colors.background, // Fundo cinza claro para não editável
     padding: 12,
     borderRadius: 8,
     fontSize: 16,
-    color: '#4B5563', // Texto mais escuro para leitura
+    color: theme.colors.text, // Texto mais escuro para leitura
     borderWidth: 1,
-    borderColor: '#D1D5DB',
+    borderColor: theme.colors.border,
   },
   inputEditable: {
-    backgroundColor: '#fff', // Fundo branco para editável
+    backgroundColor: theme.colors.white, // Fundo branco para editável
     padding: 12,
     borderRadius: 8,
     fontSize: 16,
-    color: '#1F2937',
+    color: theme.colors.text,
     borderWidth: 1,
-    borderColor: '#6ACF9E', // Borda verde quando editável
+    borderColor: theme.colors.primary, // Borda verde quando editável
   },
 
   // Estilos para Seleção de Instrumentos/Papéis
@@ -167,29 +176,29 @@ const styles = StyleSheet.create({
     gap: 10, // Espaço entre os badges
   },
   instrumentBadge: {
-    backgroundColor: '#E5E7EB', // Fundo cinza para não selecionado
+    backgroundColor: theme.colors.background, // Fundo cinza para não selecionado
     borderRadius: 20,
     paddingVertical: 8,
     paddingHorizontal: 15,
     borderWidth: 1,
-    borderColor: '#D1D5DB',
+    borderColor: theme.colors.border,
   },
   instrumentBadgeSelected: {
-    backgroundColor: '#6ACF9E', // Fundo verde quando selecionado
-    borderColor: '#003D29',
+    backgroundColor: theme.colors.primary, // Fundo verde quando selecionado
+    borderColor: theme.colors.text,
   },
   instrumentBadgeText: {
-    color: '#4B5563', // Texto cinza para não selecionado
+    color: theme.colors.text, // Texto cinza para não selecionado
     fontSize: 14,
     fontWeight: 'bold',
   },
   instrumentBadgeTextSelected: {
-    color: '#fff', // Texto branco quando selecionado
+    color: theme.colors.white, // Texto branco quando selecionado
   },
 
   // Estilos dos Botões de Ação (Editar/Salvar/Cancelar)
   editButton: {
-    backgroundColor: '#007AFF', // Azul para editar
+    backgroundColor: theme.colors.primary, // Azul para editar
     paddingVertical: 15,
     borderRadius: 10,
     alignItems: 'center',
@@ -204,7 +213,7 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   saveButton: {
-    backgroundColor: '#6ACF9E', // Verde para salvar
+    backgroundColor: theme.colors.primary, // Verde para salvar
     paddingVertical: 15,
     borderRadius: 10,
     alignItems: 'center',
@@ -212,7 +221,7 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   cancelButton: {
-    backgroundColor: '#EF4444', // Vermelho para cancelar
+    backgroundColor: theme.colors.error, // Vermelho para cancelar
     paddingVertical: 15,
     borderRadius: 10,
     alignItems: 'center',

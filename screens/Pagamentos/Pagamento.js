@@ -1,7 +1,8 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Image, Alert, TouchableOpacity } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native'; // useRoute para pegar os params
 import { Feather } from '@expo/vector-icons'; // Para o ícone de copiar
+import Button from '../../components/ui/Button';
 import * as Clipboard from 'expo-clipboard'; // Importar Clipboard do Expo
 
 export default function PaymentInfo() {
@@ -40,7 +41,7 @@ export default function PaymentInfo() {
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>Ative Sua Conta de Líder</Text>
       <Text style={styles.description}>
-        Para ter acesso completo ao aplicativo e gerenciar seu grupo de louvor, por favor, realize o pagamento mensal de **R${pixValue}**.
+        Para ter acesso completo ao aplicativo e gerenciar seu grupo de musica, por favor, realize o pagamento mensal de **R${pixValue}**.
         Sua conta será ativada manualmente após a confirmação do pagamento.
       </Text>
 
@@ -70,13 +71,20 @@ export default function PaymentInfo() {
         **Atenção:** Guarde o comprovante de pagamento. Sua conta será liberada em até 24h úteis após a confirmação do pagamento.
       </Text>
 
-      <TouchableOpacity style={styles.confirmButton} onPress={handlePaymentConfirmed}>
-        <Text style={styles.confirmButtonText}>JÁ FIZ O PAGAMENTO</Text>
-      </TouchableOpacity>
+      <Button 
+        title="JÁ FIZ O PAGAMENTO" 
+        onPress={handlePaymentConfirmed}
+        style={{ width: '100%', maxWidth: 400, marginBottom: 15 }}
+        iconRight="check"
+      />
 
-      <TouchableOpacity style={styles.backToLoginButton} onPress={() => navigation.replace('Login')}>
-        <Text style={styles.backToLoginText}>Voltar para o Login</Text>
-      </TouchableOpacity>
+      <Button 
+        title="Voltar para o Login" 
+        onPress={() => navigation.replace('Login')}
+        variant="secondary"
+        style={{ marginTop: 10 }}
+        iconLeft="arrow-left"
+      />
 
     </ScrollView>
   );
@@ -216,6 +224,14 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     elevation: 3,
     marginBottom: 15,
+  },
+  buttonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  buttonIcon: {
+    marginLeft: 8,
   },
   confirmButtonText: {
     color: 'white',

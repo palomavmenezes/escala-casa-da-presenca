@@ -12,10 +12,12 @@
       "android",
       "web"
     ],
-    "entryPoint": "node_modules/expo/AppEntry.js",
     "updates": {
       "fallbackToCacheTimeout": 0
     },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "plugins": [
       [
         "expo-image-picker",
@@ -24,9 +26,6 @@
           "cameraPermission": "O aplicativo precisa de acesso à sua câmera para tirar uma foto de perfil."
         }
       ]
-    ],
-    "assetBundlePatterns": [
-      "**/*"
     ],
     "ios": {
       "supportsTablet": true,

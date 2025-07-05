@@ -13,7 +13,7 @@ const styles = StyleSheet.create({
     width: width * 0.75,
     height: '100%',
     backgroundColor: '#fff',
-    paddingTop: 50,
+    paddingTop: 20,
     paddingHorizontal: 20,
   },
   closeButtonContainer: {
@@ -46,6 +46,11 @@ const styles = StyleSheet.create({
   profileInfo: {
     flex: 1,
   },
+  welcomeText: {
+    fontSize: 14,
+    color: '#2B423B',
+    marginBottom: 2,
+  },
   profileName: {
     fontSize: 18,
     fontWeight: 'bold',
@@ -67,6 +72,7 @@ const styles = StyleSheet.create({
   churchLogoContainer: {
     alignItems: 'center',
     marginBottom: 20,
+    marginTop: 10,
     width: '100%',
   },
   churchLogo: {

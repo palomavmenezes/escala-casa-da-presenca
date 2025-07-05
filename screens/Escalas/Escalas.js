@@ -1,251 +1,205 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
   FlatList,
   TouchableOpacity,
   StyleSheet,
-  ActivityIndicator, // Added for loading indicator
-  Alert // Added for displaying error alerts
+  ActivityIndicator,
+  Image,
 } from 'react-native';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
-import { db, auth } from '../../services/firebase'; // Import auth
-import { collection, getDocs, doc, getDoc, query, where } from 'firebase/firestore'; // Import doc, getDoc, query, where
-import EscalaCard from '../../components/Escalas/EscalaCard';
-import BottomTab from '../../components/BottomTab';
+import { useNavigation } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
+import { useEscalas } from '../../hooks/useEscalas';
+import theme from '../../components/theme';
+import BottomTab from '../../components/layout/BottomTab';
+import EscalaCard from '../../components/domain/EscalaCard';
+import ResponsibleMinisterCard from '../../components/domain/ResponsibleMinisterCard';
 
-export default function Escalas() {
-  const navigation = useNavigation();
-  const [escalas, setEscalas] = useState([]);
-  const [loading, setLoading] = useState(true); // New state for loading
-  const [userChurchId, setUserChurchId] = useState(null); // New state for church ID
-  const [telaErro, setTelaErro] = useState(''); // State to display errors
+const calendarioImg = require('../../assets/img/calendar-illustration.png'); // Substitua pelo caminho correto da sua imagem ilustrativa
 
-  // Function to fetch the user's church ID
-  const fetchUserChurchId = async () => {
-    const currentUser = auth.currentUser;
-    if (!currentUser) {
-      setTelaErro('Usuário não autenticado. Faça login para ver as escalas.');
-      return null;
-    }
+export default function Escalas({ navigation }) {
+  const { escalas, loading } = useEscalas();
+  const [tab, setTab] = useState('proximos');
 
-    try {
-      let foundIgrejaId = null;
-      // Query all 'igrejas' to find the one the user belongs to
-      const igrejasSnapshot = await getDocs(collection(db, 'igrejas'));
-
-      for (const docIgreja of igrejasSnapshot.docs) {
-        const usuarioDocRef = doc(db, 'igrejas', docIgreja.id, 'usuarios', currentUser.uid);
-        const usuarioDocSnap = await getDoc(usuarioDocRef);
-
-        if (usuarioDocSnap.exists()) {
-          foundIgrejaId = docIgreja.id;
-          break;
-        }
-      }
-
-      if (!foundIgrejaId) {
-        setTelaErro('Não foi possível encontrar a igreja associada ao seu usuário.');
-        return null;
-      }
-      return foundIgrejaId;
-
-    } catch (error) {
-      console.error('Erro ao buscar ID da igreja do usuário:', error);
-      setTelaErro('Erro ao carregar dados da sua igreja.');
-      return null;
-    }
-  };
-
-  const fetchEscalas = async () => {
-    setLoading(true);
-    setTelaErro(''); // Clear previous errors
-
-    const idDaIgreja = await fetchUserChurchId();
-
-    if (!idDaIgreja) {
-      setLoading(false);
-      return; // Stop if church ID not found or error occurred
-    }
-
-    setUserChurchId(idDaIgreja); // Store the found church ID
-
-    try {
-      // Query 'escalas' subcollection within the specific church
-      const escalasRef = collection(db, 'igrejas', idDaIgreja, 'escalas');
-      // Optional: Add a query to filter by date directly in Firestore for efficiency
-      const hoje = new Date();
-      const snapshot = await getDocs(escalasRef);
-
-      const escalasData = snapshot.docs
-        .map(doc => {
-          const data = doc.data();
-          // Convert dataCulto to Date object. Assuming data.dataCulto is a string like "YYYY-MM-DD"
-          return {
-            id: doc.id,
-            ...data,
-            dataCulto: new Date(data.dataCulto + 'T00:00:00'), // Add T00:00:00 to ensure correct date interpretation
-          };
-        })
-        .filter(e => !isNaN(e.dataCulto) && e.dataCulto >= hoje) // Filter dates from today onwards
-        .sort((a, b) => a.dataCulto.getTime() - b.dataCulto.getTime()); // Sort by date
-
-      setEscalas(escalasData);
-    } catch (error) {
-      console.error('Erro ao buscar escalas da igreja:', error);
-      setTelaErro('Erro ao carregar as escalas da sua igreja. Tente novamente.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // useFocusEffect to reload data when the screen comes into focus
-  useFocusEffect(
-    React.useCallback(() => {
-      fetchEscalas();
-    }, [])
-  );
-
-  // Render loading state
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#003D29" />
-        <Text style={styles.loadingText}>Carregando escalas...</Text>
-      </View>
-    );
-  }
-
-  // Render error state
-  if (telaErro) {
-    return (
-      <View style={styles.errorContainer}>
-        <Text style={styles.errorText}>{telaErro}</Text>
-        <TouchableOpacity style={styles.button} onPress={() => navigation.goBack()}>
-          <Text style={styles.buttonText}>Voltar</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
+  // Separar escalas em próximas e passadas
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  const proximas = escalas.filter(e => new Date(e.dataCulto) >= hoje);
+  const passadas = escalas.filter(e => new Date(e.dataCulto) < hoje);
+  const data = tab === 'proximos' ? proximas : passadas;
 
   return (
-    <>
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Escalas</Text>
-          <TouchableOpacity
-            style={styles.addButton}
-            onPress={() => navigation.navigate('CriarEscalas', { igrejaId: userChurchId })} // Pass userChurchId
-          >
-            <Text style={styles.addButtonText}>+ Nova escala</Text>
-          </TouchableOpacity>
+    <View style={{ flex: 1, backgroundColor: theme.colors.background, paddingHorizontal: 18 }}>
+      {/* Tabs */}
+      <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: 18, marginBottom: 18 }}>
+        <TouchableOpacity
+          style={[styles.tab, tab === 'proximos' && styles.tabActive]}
+          onPress={() => setTab('proximos')}
+        >
+          <View style={styles.tabContent}>
+            <Text style={[styles.tabText, tab === 'proximos' && styles.tabTextActive]}>PRÓXIMOS</Text>
+            <Ionicons 
+              name="chevron-forward" 
+              size={16} 
+              color={tab === 'proximos' ? theme.colors.primary : theme.colors.gray} 
+              style={styles.tabIcon}
+            />
+          </View>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, tab === 'passados' && styles.tabActive]}
+          onPress={() => setTab('passados')}
+        >
+          <View style={styles.tabContent}>
+            <Text style={[styles.tabText, tab === 'passados' && styles.tabTextActive]}>PASSADOS</Text>
+            <Ionicons 
+              name="chevron-back" 
+              size={16} 
+              color={tab === 'passados' ? theme.colors.primary : theme.colors.gray} 
+              style={styles.tabIcon}
+            />
+          </View>
+        </TouchableOpacity>
+      </View>
+
+      {/* Lista ou mensagem ilustrativa */}
+      {loading ? (
+        <ActivityIndicator color={theme.colors.primary} size="large" style={{ marginTop: 40 }} />
+      ) : data.length === 0 ? (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', marginTop: 30 }}>
+          <Image source={calendarioImg} style={{ width: 180, height: 140, marginBottom: 24 }} resizeMode="contain" />
+          <Text style={{ fontWeight: 'bold', color: theme.colors.primary, fontSize: 18, marginBottom: 8, textAlign: 'center' }}>
+            {tab === 'proximos' ? 'Nenhuma escala cadastrada' : 'Nenhum evento passado'}
+          </Text>
+          <Text style={{ color: theme.colors.text, fontSize: 15, textAlign: 'center', maxWidth: 300 }}>
+            {tab === 'proximos' 
+              ? 'Parece que ainda não existem escalas cadastradas.\nSe você está escalado como responsável de algum culto, clique no ícone "+" e crie a próxima escala.'
+              : 'Não há nenhum evento antigo para mostrar.'
+            }
+          </Text>
         </View>
-
-        <Text style={styles.subTitle}>Próximas escalas</Text>
-
+      ) : (
         <FlatList
-          data={escalas}
+          data={data}
           keyExtractor={item => item.id}
+          contentContainerStyle={{ paddingBottom: 100 }}
           renderItem={({ item }) => (
-            <TouchableOpacity onPress={() => navigation.navigate('EscalaDetalhes', { escala: { ...item, igrejaId: userChurchId } })}>
-              {/* ADICIONADO: Garantindo que igrejaId seja passado para DetalhesEscala */}
+            <TouchableOpacity
+              onPress={() => navigation.navigate('EscalaDetalhes', { escala: item })}
+              activeOpacity={0.85}
+            >
               <EscalaCard escala={item} />
             </TouchableOpacity>
           )}
-          contentContainerStyle={styles.listContent}
-          ListEmptyComponent={<Text style={styles.emptyText}>Nenhuma escala futura cadastrada para a sua igreja.</Text>}
         />
-      </View>
+      )}
       <BottomTab />
-    </>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  loadingContainer: {
+  tab: {
     flex: 1,
+    paddingVertical: 10,
+    backgroundColor: 'transparent',
+    borderRadius: 24,
+    marginHorizontal: 4,
+    alignItems: 'center',
+    elevation: 0,
+  },
+  tabContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#F5F6FA',
   },
-  loadingText: {
-    marginTop: 10,
-    fontSize: 16,
-    color: '#003D29',
+  tabIcon: {
+    marginLeft: 6,
   },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-    backgroundColor: '#F5F6FA',
-  },
-  errorText: {
-    textAlign: 'center',
-    color: 'red',
-    fontSize: 16,
-    marginBottom: 20,
-  },
-  button: {
-    backgroundColor: '#6ACF9E',
-    paddingVertical: 14,
-    borderRadius: 10,
-    alignItems: 'center',
-    marginTop: 30,
-    marginBottom: 20,
-    elevation: 3,
+  tabActive: {
+    backgroundColor: theme.colors.white,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.23,
-    shadowRadius: 2.62,
-    width: '80%',
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  buttonText: {
-    color: 'white',
-    fontSize: 18,
+  tabText: {
+    color: theme.colors.gray,
     fontWeight: 'bold',
-    letterSpacing: 1,
+    fontSize: 15,
   },
-  container: {
-    flex: 1,
-    backgroundColor: '#F5F6FA',
-    padding: 20,
+  tabTextActive: {
+    color: theme.colors.primary,
   },
-  header: {
+  card: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#003D29',
-  },
-  addButton: {
-    backgroundColor: '#003D29',
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 8,
-  },
-  addButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  subTitle: {
-    fontSize: 16,
-    color: '#003D29',
+    backgroundColor: theme.colors.white,
+    borderRadius: 16,
+    padding: 18,
     marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  cardDate: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: '#F3F7F5',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 16,
+  },
+  cardDay: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: theme.colors.primary,
+    lineHeight: 22,
+  },
+  cardMonth: {
+    fontSize: 13,
+    color: theme.colors.primary,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    marginTop: -2,
+  },
+  cardLabel: {
+    fontSize: 14,
+    color: theme.colors.primary,
+    fontWeight: 'bold',
+    marginBottom: 2,
+  },
+  cardName: {
+    fontSize: 15,
+    color: theme.colors.primary,
     fontWeight: '600',
   },
-  listContent: {
-    paddingBottom: 20,
+  fab: {
+    position: 'absolute',
+    bottom: 70,
+    left: '50%',
+    marginLeft: -28,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: theme.colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
   },
-  emptyText: {
-    textAlign: 'center',
-    color: '#555',
-    fontSize: 14,
-    marginTop: 20,
+  fabIcon: {
+    color: theme.colors.white,
+    fontSize: 32,
+    fontWeight: 'bold',
+    marginTop: -2,
   },
 });

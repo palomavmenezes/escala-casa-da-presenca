@@ -1,4 +1,5 @@
 import { StyleSheet, Dimensions } from 'react-native';
+import theme from '../components/theme';
 
 const { width } = Dimensions.get('window');
 
@@ -6,13 +7,14 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F5F6FA',
+    paddingHorizontal: 18,
   },
   topBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingTop: 50,
+    paddingTop: 15,
     paddingBottom: 15,
     backgroundColor: '#fff',
     borderBottomWidth: 1,
@@ -22,6 +24,11 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
     color: '#333',
+  },
+  headerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   headerLogo: {
     width: 120,
@@ -57,10 +64,9 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 22,
     fontWeight: 'bold',
-    marginBottom: 20,
+    marginBottom: 15,
     color: '#333',
-    marginHorizontal: 20,
-    marginTop: 20,
+    marginTop: 15,
   },
   scroll: {
     flex: 1,

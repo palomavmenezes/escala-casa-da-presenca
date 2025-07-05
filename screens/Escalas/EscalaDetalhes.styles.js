@@ -1,8 +1,9 @@
 import { StyleSheet } from 'react-native';
+import theme from '../../components/theme';
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#fff',
+    backgroundColor: theme.colors.white,
     padding: 20,
     paddingBottom: 60,
   },
@@ -15,7 +16,7 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 10,
     fontSize: 16,
-    color: '#003D29',
+    color: theme.colors.primary,
   },
   errorContainer: {
     flex: 1,
@@ -31,7 +32,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   button: { // This style is for the general button (e.g., 'Voltar' in error screen)
-    backgroundColor: '#6ACF9E',
+    backgroundColor: theme.colors.secondary,
     paddingVertical: 14,
     borderRadius: 10,
     alignItems: 'center',
@@ -44,14 +45,22 @@ const styles = StyleSheet.create({
     shadowRadius: 2.62,
     width: '80%',
   },
+  buttonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  buttonIcon: {
+    marginRight: 8,
+  },
   buttonText: { // This is a general text style for buttons
-    color: 'white',
+    color: theme.colors.white,
     fontSize: 18,
     fontWeight: 'bold',
     letterSpacing: 1,
   },
   backIcon: {
-    color: '#1F2937',
+    color: theme.colors.primary,
     marginBottom: 10,
   },
   responsavelContainer: {
@@ -108,8 +117,8 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    borderWidth: 2,
-    borderColor: '#10B981',
+    borderWidth: 3,
+    borderColor: theme.colors.secondary,
     marginBottom: 6,
   },
   iniciaisBox: {
@@ -138,9 +147,9 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   ensaioBox: {
-    backgroundColor: '#A7F3D0',
+    backgroundColor: '#fff',
     padding: 12,
-    borderRadius: 10,
+    borderRadius: 30,
     alignItems: 'center',
     marginBottom: 20,
   },
@@ -168,7 +177,7 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   tomBox: {
-    backgroundColor: '#6EE7B7',
+    backgroundColor: theme.colors.secondary,
     borderRadius: 12,
     paddingHorizontal: 10,
     paddingVertical: 4,
@@ -189,7 +198,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   botaoCifra: {
-    backgroundColor: '#1F2937',
+    backgroundColor: theme.colors.primary,
     borderRadius: 8,
     paddingVertical: 10,
     alignItems: 'center',
