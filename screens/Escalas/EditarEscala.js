@@ -26,8 +26,19 @@ import {
   deleteDoc, // Importado para deletar documentos
 } from 'firebase/firestore';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import BottomTab from '../../components/BottomTab';
+import BottomTab from '../../components/layout/BottomTab';
 import { useRoute } from '@react-navigation/native'; // Importado para obter parâmetros de rota
+import Ionicons from 'react-native-vector-icons/Ionicons';
+import MusicianList from '../../components/domain/MusicianList';
+import SectionTitle from '../../components/ui/SectionTitle';
+import Button from '../../components/ui/Button';
+import Input from '../../components/ui/Input';
+import theme from '../../components/theme';
+import MusicianGrid from '../../components/domain/MusicianGrid';
+import SelectMusicianModal from '../../components/domain/SelectMusicianModal';
+import SelectAreaModal from '../../components/domain/SelectAreaModal';
+import SelectMusicModal from '../../components/domain/SelectMusicModal';
+import SelectSingerModal from '../../components/domain/SelectSingerModal';
 
 export default function EditarEscalas({ navigation }) {
   const route = useRoute();
@@ -56,6 +67,12 @@ export default function EditarEscalas({ navigation }) {
   const [userChurchId, setUserChurchId] = useState(null); // ID da igreja do usuário
   const [loading, setLoading] = useState(true); // Estado de carregamento para busca de dados
   const [telaErro, setTelaErro] = useState(''); // Estado para exibir erros
+
+  const [currentMinistroBeingEdited, setCurrentMinistroBeingEdited] = useState(null);
+  const [ministroRolesSelected, setMinistroRolesSelected] = useState([]);
+  const [modalMinistroRolesVisible, setModalMinistroRolesVisible] = useState(false);
+
+  const areaOptions = ['Voz', 'Backing Vocal', 'Violão', 'Guitarra', 'Baixo', 'Bateria', 'Teclado', 'Apoio Técnico'];
 
   // Efeito para carregar os dados iniciais da escala e dados específicos da igreja (ministros, músicas)
   useEffect(() => {
@@ -157,27 +174,41 @@ export default function EditarEscalas({ navigation }) {
   };
 
   // --- Funções para Ministros (Mantidas) ---
-  const toggleMinistroEscalado = (id) => {
+  const handleAdicionarMinistro = (ministro) => {
+    setCurrentMinistroBeingEdited(ministro.id);
+    setMinistroRolesSelected([]); // Começa sem áreas selecionadas
+    setModalMinistroRolesVisible(true);
+  };
+
+  const saveMinistroRoles = () => {
     setMinistrosEscalados(prev => {
-      const isCurrentlyEscalado = prev.includes(id);
-      if (isCurrentlyEscalado) {
-        // Se o ministro for removido da escala geral, remove também de todas as músicas
-        setMusicasSelecionadas(prevMusicas => {
-          return prevMusicas.map(musica => ({
-            ...musica,
-            cantores: musica.cantores.filter(cantorId => cantorId !== id),
-          }));
-        });
-        return prev.filter(mId => mId !== id);
+      const exists = prev.some(m => m.userId === currentMinistroBeingEdited);
+      if (exists) {
+        return prev.map(m =>
+          m.userId === currentMinistroBeingEdited ? { ...m, areas: ministroRolesSelected } : m
+        );
       } else {
-        return [...prev, id];
+        return [...prev, { userId: currentMinistroBeingEdited, areas: ministroRolesSelected }];
       }
     });
+    setModalMinistroRolesVisible(false);
+    setCurrentMinistroBeingEdited(null);
+    setMinistroRolesSelected([]);
+  };
+
+  const removerMinistroEscalado = (userId) => {
+    setMinistrosEscalados(prev => prev.filter(m => m.userId !== userId));
+  };
+
+  const formatarAreas = (areas) => {
+    if (!areas || areas.length === 0) return '';
+    if (areas.length === 1) return areas[0];
+    return areas.slice(0, -1).join(', ') + ' e ' + areas[areas.length - 1];
   };
 
   const getMinistroNomeById = (id) => {
     const ministro = ministros.find(m => m.id === id);
-    return ministro ? ministro.nome : 'Ministro Desconhecido';
+    return ministro ? ministro.nome : 'Autor desconhecido';
   };
 
   // Usando 'foto' como o campo para a URL da foto, com base na sua estrutura de dados
@@ -334,6 +365,13 @@ export default function EditarEscalas({ navigation }) {
       // Referência ao documento da escala a ser atualizada
       const escalaRef = doc(db, 'igrejas', userChurchId, 'escalas', escala.id);
 
+      // Montar arrays corretos
+      const usuariosEscalados = (ministrosEscalados || []).map(m => ({
+        userId: m.userId,
+        roles: m.areas || [],
+      }));
+      const usuariosEscaladosIds = usuariosEscalados.map(u => u.userId);
+
       await updateDoc(escalaRef, {
         dataCulto: dataCulto,
         ensaio: marcarEnsaio,
@@ -345,15 +383,16 @@ export default function EditarEscalas({ navigation }) {
           musicaId: m.musicaId,
           musicaNome: m.musicaNome,
           video: m.video,
-          tom: m.tom || '', // Garante que 'tom' é incluído se disponível na música da escala
+          tom: m.tom || '',
         })),
-        usuariosEscalados: ministrosEscalados,
-        ultimaEdicaoEm: new Date(), // Adiciona um timestamp da última edição
-        editadoPor: currentUser.uid, // Registra quem editou
+        usuariosEscalados,
+        usuariosEscaladosIds,
+        ultimaEdicaoEm: new Date(),
+        editadoPor: currentUser.uid,
       });
 
       Alert.alert('Sucesso', 'Escala atualizada com sucesso!');
-      navigation.goBack?.(); // Volta para a tela anterior após atualização bem-sucedida
+      navigation.goBack?.();
     } catch (e) {
       console.error('Erro ao salvar edição da escala:', e);
       Alert.alert('Erro', 'Não foi possível atualizar a escala. Tente novamente.');
@@ -392,7 +431,7 @@ export default function EditarEscalas({ navigation }) {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#003D29" />
+        <ActivityIndicator size="large" color={theme.colors.primary} />
         <Text style={styles.loadingText}>Carregando escala para edição...</Text>
       </View>
     );
@@ -403,9 +442,9 @@ export default function EditarEscalas({ navigation }) {
     return (
       <View style={styles.errorContainer}>
         <Text style={styles.errorText}>{telaErro}</Text>
-        <TouchableOpacity style={styles.button} onPress={() => navigation.goBack()}>
-          <Text style={styles.buttonText}>Voltar</Text>
-        </TouchableOpacity>
+        <Button onPress={() => navigation.goBack()} iconLeft="arrow-back" style={styles.button}>
+          Voltar
+        </Button>
       </View>
     );
   }
@@ -492,52 +531,29 @@ export default function EditarEscalas({ navigation }) {
         )}
 
         {/* Título Músicos */}
-        <Text style={styles.sectionTitle}>Músicos</Text>
-        <View style={styles.cantoresContainer}>
-          {ministrosEscalados.map(id => {
-            const ministro = ministros.find(m => m.id === id);
-            if (!ministro) return null;
-
-            return (
-              <View key={id} style={styles.cantorBox}>
-                <TouchableOpacity
-                  style={styles.removeButton}
-                  onPress={() => toggleMinistroEscalado(id)}
-                >
-                  <Text style={styles.removeButtonText}>×</Text>
-                </TouchableOpacity>
-
-                {ministro.foto ? ( // Usando 'ministro.foto' conforme a estrutura de dados
-                  <Image source={{ uri: ministro.foto }} style={styles.avatar} />
-                ) : (
-                  <View style={[styles.avatar, styles.avatarSemFoto]}>
-                    <Text style={styles.avatarIniciais}>
-                      {getMinistroIniciaisById(id)}
-                    </Text>
-                  </View>
-                )}
-                <Text style={styles.nomeCantor}>{ministro.nome}</Text>
-                <Text style={styles.subtituloCantor}>{ministro.area}</Text>
-              </View>
-            );
+        <SectionTitle>Músicos</SectionTitle>
+        <MusicianList
+          musicians={ministrosEscalados.map(ministro => {
+            const dados = ministros.find(m => m.id === ministro.userId);
+            return {
+              userId: ministro.userId,
+              nome: dados?.nome || '',
+              foto: dados?.foto,
+              iniciais: getMinistroIniciaisById(ministro.userId),
+              areas: formatarAreas(ministro.areas),
+            };
           })}
+          onEditAreas={m => openMinistroRolesModal(m.userId)}
+          onRemove={m => removerMinistroEscalado(m.userId)}
+        />
 
-          {/* Botão de adicionar músico */}
-          <TouchableOpacity onPress={() => setModalMinistrosVisible(true)} style={styles.cantorBox}>
-            <View style={[styles.avatar, styles.avatarAdd]}>
-              <Text style={{ fontSize: 30, color: '#6ACF9E' }}>+</Text>
-            </View>
-            <Text style={styles.nomeCantor}>Adicionar</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Título Louvores */}
-        <Text style={styles.sectionTitle}>Louvores</Text>
+        {/* Título Músicas */}
+        <Text style={styles.sectionTitle}>Músicas</Text>
         <TouchableOpacity
           style={styles.pickerInputSimulated}
           onPress={() => setModalMusicasVisible(true)}
         >
-          <Text style={styles.pickerInputSimulatedText}>Selecione os louvores</Text>
+          <Text style={styles.pickerInputSimulatedText}>Selecione as músicas</Text>
         </TouchableOpacity>
 
         {/* Lista de Músicas Selecionadas */}
@@ -599,7 +615,7 @@ export default function EditarEscalas({ navigation }) {
                 })}
                 <TouchableOpacity onPress={() => openCantoresMusicaModal(index)} style={styles.cantorBox}>
                   <View style={[styles.avatar, styles.avatarAdd]}>
-                    <Text style={{ fontSize: 30, color: '#6ACF9E' }}>+</Text>
+                    <Text style={{ fontSize: 30, color: theme.colors.secondary }}>+</Text>
                   </View>
                   <Text style={styles.nomeCantor}>Adicionar</Text>
                 </TouchableOpacity>
@@ -615,150 +631,62 @@ export default function EditarEscalas({ navigation }) {
         })}
 
         {/* Botão Salvar Edição */}
-        <TouchableOpacity style={styles.button} onPress={salvarEdicaoEscala}>
-          <Text style={styles.buttonText}>SALVAR EDIÇÃO DA ESCALA</Text>
-        </TouchableOpacity>
+        <Button 
+          title="SALVAR EDIÇÃO DA ESCALA" 
+          onPress={salvarEdicaoEscala}
+          style={styles.button}
+          iconRight="checkmark-outline"
+        />
 
-        {/* Botão Deletar Escala */}
-        <TouchableOpacity style={[styles.button, styles.deleteButton]} onPress={deletarEscala}>
-          <Text style={styles.buttonText}>DELETAR ESCALA</Text>
-        </TouchableOpacity>
+                {/* Botão Deletar Escala */}
+        <Button 
+          title="DELETAR ESCALA" 
+          onPress={deletarEscala}
+          style={[styles.button, styles.deleteButton]}
+          iconRight="trash-outline"
+        />
 
-        {/* Modal para Adicionar Músicos (Geral) */}
-        <Modal
+        {/* Modal para Adicionar Músicos */}
+        <SelectMusicianModal
           visible={modalMinistrosVisible}
-          transparent
-          animationType="slide"
-          onRequestClose={() => setModalMinistrosVisible(false)}
-        >
-          <View style={styles.modalContainer}>
-            <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>Adicionar Músicos</Text>
-              <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
-                {ministros.map(m => (
-                  <TouchableOpacity
-                    key={m.id}
-                    onPress={() => toggleMinistroEscalado(m.id)}
-                    style={[
-                      styles.modalItem,
-                      ministrosEscalados.includes(m.id) && styles.modalItemSelected,
-                    ]}
-                  >
-                    {m.foto ? ( // Usando 'm.foto'
-                      <Image source={{ uri: m.foto }} style={styles.avatar} />
-                    ) : (
-                      <View style={[styles.avatar, styles.avatarSemFoto]}>
-                        <Text style={styles.avatarIniciais}>
-                          {getMinistroIniciaisById(m.id)}
-                        </Text>
-                      </View>
-                    )}
-                    <Text style={{ marginLeft: 10 }}>{m.nome} ({m.area})</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-              <TouchableOpacity style={styles.button} onPress={() => setModalMinistrosVisible(false)}>
-                <Text style={styles.buttonText}>FECHAR</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Modal>
+          onClose={() => setModalMinistrosVisible(false)}
+          ministros={ministros}
+          ministrosEscalados={ministrosEscalados}
+          onSelect={handleAdicionarMinistro}
+          cantorSearchQuery={cantorSearchQuery}
+          setCantorSearchQuery={setCantorSearchQuery}
+        />
 
-        {/* Novo Modal para Seleção de Músicas com Busca */}
-        <Modal
+        {/* Modal para Seleção de Músicas */}
+        <SelectMusicModal
           visible={modalMusicasVisible}
-          transparent
-          animationType="slide"
-          onRequestClose={() => {
-            setModalMusicasVisible(false);
-            setMusicaSearchQuery('');
-          }}
-        >
-          <View style={styles.modalContainer}>
-            <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>Buscar e Selecionar Louvores</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Buscar música por nome..."
-                value={musicaSearchQuery}
-                onChangeText={setMusicaSearchQuery}
-              />
-              <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
-                {filteredMusicas.length > 0 ? (
-                  filteredMusicas.map(musica => (
-                    <TouchableOpacity
-                      key={musica.id}
-                      onPress={() => handleAdicionarMusicas(musica.id)}
-                      style={[
-                        styles.modalItem,
-                        musicasSelecionadas.some(m => m.musicaId === musica.id) && styles.modalItemSelected,
-                      ]}
-                      disabled={musicasSelecionadas.some(m => m.musicaId === musica.id)}
-                    >
-                      <Text style={{ marginLeft: 10, flex: 1 }}>{musica.nome}</Text>
-                      {musicasSelecionadas.some(m => m.musicaId === musica.id) && (
-                        <Text style={{ color: '#6ACF9E', fontWeight: 'bold' }}>ADICIONADA</Text>
-                      )}
-                    </TouchableOpacity>
-                  ))
-                ) : (
-                  <Text style={styles.noResultsText}>Nenhuma música encontrada ou disponível.</Text>
-                )}
-              </ScrollView>
-              <TouchableOpacity
-                style={styles.button}
-                onPress={() => {
-                  setModalMusicasVisible(false);
-                  setMusicaSearchQuery('');
-                }}
-              >
-                <Text style={styles.buttonText}>FECHAR</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Modal>
+          onClose={() => setModalMusicasVisible(false)}
+          musicas={filteredMusicas}
+          musicasSelecionadas={musicasSelecionadas}
+          onSelect={handleAdicionarMusicas}
+          musicaSearchQuery={musicaSearchQuery}
+          setMusicaSearchQuery={setMusicaSearchQuery}
+        />
 
-        {/* Modal para Adicionar Cantores para uma Música Específica */}
-        <Modal
+        {/* Modal para Adicionar Cantores */}
+        <SelectSingerModal
           visible={modalCantoresMusicaVisible}
-          transparent
-          animationType="slide"
-          onRequestClose={() => setModalCantoresMusicaVisible(false)}
-        >
-          <View style={styles.modalContainer}>
-            <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>Adicionar Cantores para a Música</Text>
-              <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
-                {ministros
-                  .filter(m => m.area === 'Cantor(a)' && ministrosEscalados.includes(m.id))
-                  .map(m => (
-                    <TouchableOpacity
-                      key={m.id}
-                      onPress={() => toggleCantorMusica(m.id)}
-                      style={[
-                        styles.modalItem,
-                        getCantoresSelecionadosParaMusica(currentMusicIndexForSingers)?.includes(m.id) && styles.modalItemSelected,
-                      ]}
-                    >
-                      {m.foto ? ( // Usando 'm.foto'
-                        <Image source={{ uri: m.foto }} style={styles.avatar} />
-                      ) : (
-                        <View style={[styles.avatar, styles.avatarSemFoto]}>
-                          <Text style={styles.avatarIniciais}>
-                            {getMinistroIniciaisById(m.id)}
-                          </Text>
-                        </View>
-                      )}
-                      <Text style={{ marginLeft: 10 }}>{m.nome} ({m.area})</Text>
-                    </TouchableOpacity>
-                  ))}
-              </ScrollView>
-              <TouchableOpacity style={styles.button} onPress={() => setModalCantoresMusicaVisible(false)}>
-                <Text style={styles.buttonText}>FECHAR</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Modal>
+          onClose={() => setModalCantoresMusicaVisible(false)}
+          cantores={ministros.filter(m => ministrosEscalados.some(ms => ms.userId === m.id))}
+          cantoresSelecionados={getCantoresSelecionadosParaMusica(currentMusicIndexForSingers) || []}
+          onToggle={toggleCantorMusica}
+          getIniciais={getMinistroIniciaisById}
+        />
+
+        {/* Modal para Seleção de Áreas */}
+        <SelectAreaModal
+          visible={modalMinistroRolesVisible}
+          onClose={() => setModalMinistroRolesVisible(false)}
+          areaOptions={areaOptions}
+          selectedAreas={ministroRolesSelected}
+          onToggleArea={area => setMinistroRolesSelected(prev => prev.includes(area) ? prev.filter(a => a !== area) : [...prev, area])}
+          onSave={saveMinistroRoles}
+        />
       </ScrollView>
       <BottomTab navigation={navigation} />
     </>

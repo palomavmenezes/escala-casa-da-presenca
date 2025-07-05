@@ -5,7 +5,7 @@ import {
 import { WebView } from 'react-native-webview';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import BottomTab from '../../components/BottomTab';
+import BottomTab from '../../components/layout/BottomTab';
 import { db, auth } from '../../services/firebase'; // Import auth
 import { doc, getDoc, deleteDoc } from 'firebase/firestore'; // Import doc, getDoc, deleteDoc
 
@@ -153,9 +153,9 @@ export default function Detalhes() {
     return (
       <View style={styles.errorContainer}>
         <Text style={styles.errorText}>{telaErro}</Text>
-        <TouchableOpacity style={styles.button} onPress={() => navigation.goBack()}>
-          <Text style={styles.buttonText}>Voltar</Text>
-        </TouchableOpacity>
+        <Button onPress={() => navigation.goBack()} iconLeft="arrow-back" style={styles.button}>
+          Voltar
+        </Button>
       </View>
     );
   }
@@ -163,14 +163,6 @@ export default function Detalhes() {
   return (
     <>
       <View style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={24} color="#000" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Detalhes do Louvor</Text>
-        </View>
-
-        <ScrollView contentContainerStyle={styles.content}>
           <Text style={styles.nome}>{musica.nome}</Text>
 
           {musica.cantorOriginal && (
@@ -206,7 +198,7 @@ export default function Detalhes() {
           {musica.cifra && (
             <TouchableOpacity style={styles.botaoCifra} onPress={abrirCifraExterna}>
               <Ionicons name="musical-notes" size={20} color="#fff" />
-              <Text style={styles.textoBotao}>Abrir Cifra no Cifra Club</Text>
+              <Text style={styles.textoBotao}>Abrir no Cifra Club</Text>
             </TouchableOpacity>
           )}
 
@@ -224,7 +216,6 @@ export default function Detalhes() {
               </TouchableOpacity>
             </View>
           )}
-        </ScrollView>
       </View>
       <BottomTab />
     </>
@@ -235,7 +226,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
-    paddingTop: 60,
+    paddingTop: 30,
     paddingHorizontal: 20,
   },
   loadingContainer: {
@@ -275,6 +266,14 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.23,
     shadowRadius: 2.62,
     width: '80%',
+  },
+  buttonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  buttonIcon: {
+    marginRight: 8,
   },
   buttonText: { // Reused for error screen button
     color: 'white',

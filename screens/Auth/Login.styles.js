@@ -1,5 +1,6 @@
 // screens/Auth/Login.styles.js
 import { StyleSheet } from 'react-native';
+import theme from '../../components/theme';
 
 const styles = StyleSheet.create({
   safeArea: {
@@ -84,7 +85,7 @@ const styles = StyleSheet.create({
   },
   loginButton: {
     flexDirection: 'row',
-    backgroundColor: '#2e4a3f',
+    backgroundColor: theme.colors.primary,
     borderRadius: 10,
     height: 55,
     justifyContent: 'center',
@@ -97,10 +98,18 @@ const styles = StyleSheet.create({
     marginBottom: 40,
   },
   loginButtonText: {
-    color: 'white',
+    color: theme.colors.white,
     fontSize: 18,
     fontWeight: 'bold',
     marginRight: 10,
+  },
+  buttonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  buttonIcon: {
+    marginLeft: 8,
   },
   loginButtonIcon: {
     marginLeft: 5,
@@ -136,13 +145,13 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   leaderCadastroLiderButton: {
-    backgroundColor: '#33b85b',
+    backgroundColor: theme.colors.secondary,
   },
   memberCadastroLiderButton: {
-    backgroundColor: '#2e4a3f',
+    backgroundColor: theme.colors.primary,
   },
   registerButtonText: {
-    color: 'white',
+    color: theme.colors.white,
     fontSize: 16,
     fontWeight: 'bold',
     textAlign: 'center',

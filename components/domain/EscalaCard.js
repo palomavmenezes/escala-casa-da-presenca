@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../services/firebase';
+import theme from '../theme';
 
 const parseDate = (data) => {
   if (!data) return null;
@@ -29,16 +30,16 @@ export default function EscalaCard({ escala }) {
 
           if (userDocSnap.exists()) {
             const dados = userDocSnap.data();
-            setResponsavel(`${dados.nome} ${dados.sobrenome || ''}`); // Ensure sobrenome is handled if it's null/undefined
+            setResponsavel(`${dados.nome} ${dados.sobrenome || ''}`);
           } else {
-            setResponsavel('Usuário não encontrado'); // Changed from Ministro to Usuário
+            setResponsavel('Usuário não encontrado');
           }
         } else {
           setResponsavel('Dados do responsável ausentes');
         }
       } catch (e) {
         setResponsavel('Erro ao buscar responsável');
-        console.error('Erro ao buscar responsável do EscalaCard:', e); // Specific error log
+        console.error('Erro ao buscar responsável do EscalaCard:', e);
       }
     };
 
@@ -56,7 +57,7 @@ export default function EscalaCard({ escala }) {
         <Text style={styles.mes}>{mes}</Text>
       </View>
       <View style={styles.info}>
-        <Text style={styles.label}>Ministro responsável:</Text>
+        <Text style={styles.label}>Criador do Repertório</Text>
         <Text style={styles.responsavel}>{responsavel}</Text>
       </View>
     </View>
@@ -66,7 +67,7 @@ export default function EscalaCard({ escala }) {
 const styles = StyleSheet.create({
   card: {
     flexDirection: 'row',
-    backgroundColor: '#F8F8F8',
+    backgroundColor: theme.colors.white,
     borderRadius: 12,
     padding: 12,
     marginBottom: 10,
@@ -80,12 +81,12 @@ const styles = StyleSheet.create({
   dia: {
     fontSize: 22,
     fontWeight: 'bold',
-    color: '#1C1C1C',
+    color: theme.colors.primary,
   },
   mes: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#1C1C1C',
+    color: theme.colors.primary,
   },
   info: {
     flex: 1,
@@ -93,12 +94,12 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#1C1C1C',
+    color: theme.colors.primary,
     marginBottom: 2,
   },
   responsavel: {
     fontSize: 15,
-    color: '#1C1C1C',
+    color: theme.colors.primary,
     fontWeight: '400',
   },
 });
