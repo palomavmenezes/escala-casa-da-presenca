@@ -9,6 +9,7 @@ import styles from './Cadastro/CadastroLider.styles';
 import Avatar from '../components/ui/Avatar';
 import dayjs from 'dayjs';
 import isSameOrAfter from 'dayjs/plugin/isSameOrAfter';
+import { useNotifications } from '../hooks/useNotifications';
 dayjs.extend(isSameOrAfter);
 
 export default function CalendarioResponsaveis({ navigation }) {
@@ -16,6 +17,8 @@ export default function CalendarioResponsaveis({ navigation }) {
   const isLider = userProfile?.isLider;
   const igrejaId = userProfile?.igrejaId;
   const nomeLider = userProfile?.nome;
+
+  const { createNotification } = useNotifications(igrejaId);
 
   const [selectedDate, setSelectedDate] = useState(null);
   const [responsaveis, setResponsaveis] = useState({}); // { '2021-07-31': { nome, userId } }
@@ -64,11 +67,28 @@ export default function CalendarioResponsaveis({ navigation }) {
   const fetchMembros = useCallback(async () => {
     if (!igrejaId) return;
     setLoadingMembros(true);
-    const q = query(collection(db, 'igrejas', igrejaId, 'usuarios'), where('isMinisterForCults', '==', true));
+    const q = query(
+      collection(db, 'igrejas', igrejaId, 'usuarios'),
+      where('isMinisterForCults', '==', true)
+    );
     const snap = await getDocs(q);
-    setMembros(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    const membrosList = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    // Garante que o usuário logado sempre aparece na lista
+    if (userProfile && !membrosList.some(m => m.id === userProfile.userId)) {
+      membrosList.push({
+        id: userProfile.userId,
+        nome: userProfile.nome,
+        sobrenome: userProfile.sobrenome,
+        foto: userProfile.foto,
+        isLider: userProfile.isLider,
+        isMinisterForCults: userProfile.isMinisterForCults,
+        aprovado: userProfile.aprovado,
+        // ...outros campos se necessário
+      });
+    }
+    setMembros(membrosList);
     setLoadingMembros(false);
-  }, [igrejaId]);
+  }, [igrejaId, userProfile]);
 
   useEffect(() => { fetchResponsaveis(); }, [fetchResponsaveis]);
 
@@ -92,6 +112,18 @@ export default function CalendarioResponsaveis({ navigation }) {
       criadoPor: userProfile.userId,
       criadoEm: serverTimestamp(),
     });
+    // Só cria notificação se o líder não estiver se escalando
+    if (membro.id !== userProfile.userId) {
+      await createNotification({
+        type: 'responsavel_repertorio',
+        title: 'Você foi designado responsável pelo repertório',
+        message: `te deixou responsável pelo repertório do dia ${selectedDate.split('-').reverse().join('/')}`,
+        igrejaId,
+        recipientId: membro.id,
+        criadoPor: userProfile.userId,
+        dataISO: selectedDate,
+      });
+    }
     await fetchResponsaveis();
     setLoadingAtribuir(false);
     setModalVisible(false);
